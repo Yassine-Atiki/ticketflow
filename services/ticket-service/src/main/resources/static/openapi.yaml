@@ -1,0 +1,519 @@
+
+openapi: 3.1.0
+
+info:
+  title: TicketFlow Ticket Service API
+  version: 1.0.0
+  description: >
+    Contrat REST proposé pour consulter les tickets du client authentifié
+    et vérifier un code de contrôle. L'émission est déclenchée par
+    BookingConfirmed sur Kafka; elle n'est pas une commande publique.
+
+servers:
+  - url: http://localhost:8083
+    description: Environnement local
+
+tags:
+  - name: My tickets
+    description: Tickets appartenant au client authentifié.
+  - name: Ticket verification
+    description: Vérification autorisée du code et du statut d'un ticket.
+
+security:
+  - BearerAuth: []
+
+paths:
+
+  /api/v1/me/tickets:
+    get:
+      tags:
+        - My tickets
+      operationId: listMyTickets
+      summary: Lister les tickets du client authentifié
+      description: >
+        Le propriétaire est déterminé côté serveur depuis le JWT vérifié.
+        Aucun identifiant client fourni par l'appelant ne sert d'autorité.
+
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/TicketStatus'
+
+      responses:
+        '200':
+          description: >
+            Page des tickets du demandeur. La liste est vide s'il ne possède
+            aucun ticket.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketPage'
+              examples:
+                oneTicket:
+                  value:
+                    items:
+                      - ticketId: 7d09ea60-5ba3-4a39-a13b-d5b15055f39c
+                        bookingId: bkg-2026-000184
+                        eventId: evt-2026-00042
+                        status: ISSUED
+                        issuedAt: '2026-05-18T14:32:10Z'
+                    page: 0
+                    size: 20
+                    totalElements: 1
+                    totalPages: 1
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/v1/me/tickets/{ticketId}:
+    get:
+      tags:
+        - My tickets
+      operationId: getMyTicket
+      summary: Consulter un de ses tickets
+      description: >
+        Le service vérifie que le ticket appartient au sujet authentifié.
+        Un ticket inconnu et un ticket appartenant à un autre client
+        produisent la même réponse 404 afin de ne pas révéler son existence.
+        Le code de contrôle n'est renvoyé que dans cette réponse propriétaire.
+        Cette réponse contient une information confidentielle et ne doit
+        jamais être mise en cache.
+
+      parameters:
+        - name: ticketId
+          in: path
+          required: true
+          description: Identifiant UUID du ticket.
+          schema:
+            type: string
+            format: uuid
+
+      responses:
+        '200':
+          description: Détail du ticket appartenant au demandeur.
+          headers:
+            Cache-Control:
+              description: Empêche la mise en cache du code de contrôle.
+              schema:
+                type: string
+                const: no-store
+              example: no-store
+
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyTicketDetail'
+              examples:
+                ticket:
+                  value:
+                    ticketId: 7d09ea60-5ba3-4a39-a13b-d5b15055f39c
+                    bookingId: bkg-2026-000184
+                    eventId: evt-2026-00042
+                    status: ISSUED
+                    issuedAt: '2026-05-18T14:32:10Z'
+                    controlCode: tkt_4mQ8vZ2pL9xN6cR3sT7wB5hK1aE0dFyu
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /api/v1/tickets/verify:
+    post:
+      tags:
+        - Ticket verification
+      operationId: verifyTicketCode
+      summary: Vérifier un code de contrôle et son statut
+      description: >
+        Opération sans mutation. Réservée à un appelant authentifié et
+        autorisé à vérifier les tickets. Le nom du rôle ou du scope doit
+        être défini par le produit avant l'implémentation.
+
+        Le champ recognized indique uniquement si le code correspond
+        à un ticket existant. recognized=true ne signifie pas que le ticket
+        autorise automatiquement une admission ou un accès physique.
+
+        Un ticket reconnu peut être ISSUED ou CANCELLED.
+        UNKNOWN est uniquement un résultat de vérification et non un état
+        persistant du ticket.
+
+        Ne jamais journaliser ni renvoyer controlCode.
+        Cette vérification n'effectue pas le check-in.
+
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyTicketRequest'
+            examples:
+              scan:
+                value:
+                  controlCode: tkt_4mQ8vZ2pL9xN6cR3sT7wB5hK1aE0dFyu
+
+      responses:
+        '200':
+          description: >
+            Résultat de vérification. Un code reconnu ne signifie pas
+            automatiquement qu'une admission est autorisée.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketVerification'
+
+              examples:
+                recognized:
+                  summary: Code correspondant à un ticket existant
+                  value:
+                    recognized: true
+                    status: ISSUED
+                    ticketId: 7d09ea60-5ba3-4a39-a13b-d5b15055f39c
+
+                cancelled:
+                  summary: Code reconnu pour un ticket annulé
+                  value:
+                    recognized: true
+                    status: CANCELLED
+                    ticketId: 7d09ea60-5ba3-4a39-a13b-d5b15055f39c
+
+                unrecognized:
+                  summary: Code inconnu
+                  value:
+                    recognized: false
+                    status: UNKNOWN
+                    ticketId: null
+
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+
+components:
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        Jeton OIDC. Le service valide la signature, l'expiration, l'issuer
+        et l'audience selon le contrat d'identité convenu, puis applique
+        les règles d'autorisation sur la ressource.
+
+  schemas:
+
+    TicketStatus:
+      type: string
+      description: >
+        Valeurs proposées. Le cahier des charges exige la vérification
+        du statut mais ne fixe pas les libellés ni les transitions.
+        CANCELLED dépend de l'état de réservation communiqué par Booking.
+        USED ne fait pas partie de ce contrat; le check-in est reporté à une évolution future.
+      enum:
+        - ISSUED
+        - CANCELLED
+
+    TicketSummary:
+      type: object
+      required:
+        - ticketId
+        - bookingId
+        - status
+        - issuedAt
+      properties:
+        ticketId:
+          type: string
+          format: uuid
+
+        bookingId:
+          type: string
+          minLength: 1
+          maxLength: 128
+
+        eventId:
+          type: string
+          minLength: 1
+          maxLength: 128
+
+        status:
+          $ref: '#/components/schemas/TicketStatus'
+
+        issuedAt:
+          type: string
+          format: date-time
+
+      additionalProperties: false
+
+    TicketPage:
+      type: object
+      required:
+        - items
+        - page
+        - size
+        - totalElements
+        - totalPages
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TicketSummary'
+
+        page:
+          type: integer
+          minimum: 0
+
+        size:
+          type: integer
+          minimum: 1
+          maximum: 100
+
+        totalElements:
+          type: integer
+          minimum: 0
+
+        totalPages:
+          type: integer
+          minimum: 0
+
+      additionalProperties: false
+
+    MyTicketDetail:
+      type: object
+      required:
+        - ticketId
+        - bookingId
+        - status
+        - issuedAt
+        - controlCode
+      properties:
+        ticketId:
+          type: string
+          format: uuid
+
+        bookingId:
+          type: string
+          minLength: 1
+          maxLength: 128
+
+        eventId:
+          type: string
+          minLength: 1
+          maxLength: 128
+
+        status:
+          $ref: '#/components/schemas/TicketStatus'
+
+        issuedAt:
+          type: string
+          format: date-time
+
+        controlCode:
+          type: string
+          minLength: 32
+          maxLength: 256
+          readOnly: true
+          description: >
+            Secret de présentation du ticket, renvoyé uniquement à son
+            propriétaire. Il ne doit jamais être journalisé ni mis en cache.
+            Comme le même code est restitué lors des consultations autorisées,
+            il est conservé chiffré au repos avec un chiffrement authentifié.
+            La clé est gérée hors de la base et du dépôt; sa version permet
+            de rechiffrer les codes existants avant le retrait de l'ancienne clé.
+
+      additionalProperties: false
+
+    VerifyTicketRequest:
+      type: object
+      required:
+        - controlCode
+      properties:
+        controlCode:
+          type: string
+          minLength: 32
+          maxLength: 256
+          writeOnly: true
+          description: >
+            Code de contrôle non prédictible. Ne jamais l'inclure dans les logs.
+
+      additionalProperties: false
+
+    TicketVerification:
+      oneOf:
+        - $ref: '#/components/schemas/RecognizedTicketVerification'
+        - $ref: '#/components/schemas/UnrecognizedTicketVerification'
+
+    RecognizedTicketVerification:
+      type: object
+      required:
+        - recognized
+        - status
+        - ticketId
+      properties:
+        recognized:
+          type: boolean
+          const: true
+
+        status:
+          $ref: '#/components/schemas/TicketStatus'
+
+        ticketId:
+          type: string
+          format: uuid
+
+      additionalProperties: false
+
+    UnrecognizedTicketVerification:
+      type: object
+      required:
+        - recognized
+        - status
+        - ticketId
+      properties:
+        recognized:
+          type: boolean
+          const: false
+
+        status:
+          type: string
+          const: UNKNOWN
+
+        ticketId:
+          type: 'null'
+
+      additionalProperties: false
+
+    Problem:
+      type: object
+      description: RFC 9457 Problem Details response.
+      properties:
+        type:
+          type: string
+          format: uri-reference
+
+        title:
+          type: string
+
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+
+        detail:
+          type: string
+
+        instance:
+          type: string
+          format: uri-reference
+
+        code:
+          type: string
+
+        errors:
+          type: array
+          items:
+            type: object
+            required:
+              - field
+              - message
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+            additionalProperties: false
+
+      additionalProperties: true
+
+  responses:
+
+    BadRequest:
+      description: Paramètre ou corps de requête invalide.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+    Unauthorized:
+      description: Jeton absent, invalide ou expiré.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+    Forbidden:
+      description: >
+        Demandeur authentifié mais non autorisé à vérifier des tickets.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+    NotFound:
+      description: Ticket inconnu ou appartenant à un autre client.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+    TooManyRequests:
+      description: Limite de tentatives de vérification atteinte.
+      headers:
+        Retry-After:
+          description: Nombre de secondes avant une nouvelle tentative.
+          schema:
+            type: integer
+            minimum: 0
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+    ServerError:
+      description: Erreur interne sans stack trace ni secret.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
