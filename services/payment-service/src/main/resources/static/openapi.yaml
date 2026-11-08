@@ -31,6 +31,13 @@ paths:
       description: >
         Créer une tentative de paiement associée à une réservation.
         Le montant et la devise sont récupérés depuis le Booking Service.
+        La clé d'idempotence est limitée à l'opération d'initiation dans ce
+        service et est conservée pendant toute la durée de conservation du
+        paiement associé. Une répétition avec la même clé et la même demande
+        retourne le même paiement (201) sans créer de nouvel effet, même si la
+        réponse initiale a été perdue. La même clé associée à une demande
+        différente retourne 409. Une autre clé ne permet pas de contourner un
+        état de réservation qui ne permet plus le paiement.
       operationId: initiatePayment
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -52,7 +59,11 @@ paths:
         '404':
           description: Réservation introuvable
         '409':
-          description: Paiement déjà initié ou réservation non payable
+          description: >
+            La clé d'idempotence est déjà associée à une demande différente,
+            ou la réservation est dans un état incompatible avec un nouveau
+            paiement. Une répétition identique avec la même clé retourne le
+            paiement déjà créé avec 201.
         '500':
           description: Erreur interne
 
@@ -223,6 +234,12 @@ paths:
       description: >
         Demander le remboursement total ou partiel d'un paiement réussi.
         Le remboursement doit respecter le montant restant remboursable.
+        La clé d'idempotence est limitée à ce paiement et à l'opération de
+        remboursement, puis conservée pendant toute la durée de conservation
+        du remboursement associé. La même clé avec la même demande retourne
+        le même remboursement sans nouvel effet ; la même clé avec un montant
+        ou motif différent retourne 409. Des clés distinctes identifient des
+        demandes distinctes, chacune soumise au montant restant remboursable.
       operationId: refundPayment
       parameters:
         - name: id
@@ -250,7 +267,11 @@ paths:
         '404':
           description: Paiement introuvable
         '409':
-          description: Remboursement impossible ou déjà effectué
+          description: >
+            La clé est réutilisée avec une demande différente, ou l'état du
+            paiement / le montant restant ne permet pas ce remboursement.
+            Un rejeu identique avec la même clé retourne le remboursement
+            associé sans nouvel effet.
 
   /api/payments/webhooks/{provider}:
     post:
@@ -260,7 +281,13 @@ paths:
       description: >
         Recevoir un événement envoyé par un fournisseur de paiement.
         La signature cryptographique devra être vérifiée côté serveur
-        et les événements devront être traités de manière idempotente.
+        et les événements devront être traités de manière idempotente. Un
+        événement valide dont l'identifiant fournisseur a déjà été traité
+        avec le même contenu reçoit un acquittement 2xx (200) sans nouvel
+        effet. Un identifiant déjà vu avec un contenu différent, ou une
+        transition métier réellement incompatible, est distinct d'un doublon
+        et reçoit 409. Le code d'acquittement doit être adapté aux exigences
+        du fournisseur effectivement intégré.
       operationId: receivePaymentWebhook
       parameters:
         - name: provider
@@ -290,12 +317,19 @@ paths:
       responses:
         '202':
           description: Événement accepté pour traitement
+        '200':
+          description: >
+            Événement valide déjà traité avec le même identifiant et le même
+            contenu ; acquittement réussi sans nouvel effet.
         '400':
           description: Événement invalide
         '404':
           description: Paiement ou référence externe introuvable
         '409':
-          description: Événement déjà traité ou transition impossible
+          description: >
+            Identifiant d'événement déjà associé à un contenu différent ou
+            transition métier réellement incompatible. Ce statut ne sert pas
+            à signaler un doublon valide déjà traité.
 
 components:
 
@@ -305,8 +339,13 @@ components:
       in: header
       required: true
       description: >
-        Clé unique permettant d'éviter le traitement multiple
-        d'une même demande.
+        Clé opaque unique dans le périmètre de l'opération et conservée aussi
+        longtemps que la ressource créée par cette opération. Même clé et
+        même demande : retourner le résultat initial sans nouvel effet. Même
+        clé et demande différente : retourner 409. Pour POST /api/payments,
+        la portée est l'opération d'initiation du service ; pour un
+        remboursement, elle est limitée au paiement concerné. La clé ne doit
+        pas être réutilisée pour une nouvelle demande après un délai réseau.
       schema:
         type: string
         minLength: 1
