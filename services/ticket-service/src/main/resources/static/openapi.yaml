@@ -251,7 +251,7 @@ components:
         Valeurs proposées. Le cahier des charges exige la vérification
         du statut mais ne fixe pas les libellés ni les transitions.
         CANCELLED dépend de l'état de réservation communiqué par Booking.
-        USED nécessite de cadrer explicitement le check-in avant son ajout.
+        USED ne fait pas partie de ce contrat; le check-in est reporté à une évolution future.
       enum:
         - ISSUED
         - CANCELLED
@@ -358,7 +358,10 @@ components:
           description: >
             Secret de présentation du ticket, renvoyé uniquement à son
             propriétaire. Il ne doit jamais être journalisé ni mis en cache.
-            Son stockage doit permettre une restitution sécurisée.
+            Comme le même code est restitué lors des consultations autorisées,
+            il est conservé chiffré au repos avec un chiffrement authentifié.
+            La clé est gérée hors de la base et du dépôt; sa version permet
+            de rechiffrer les codes existants avant le retrait de l'ancienne clé.
 
       additionalProperties: false
 

@@ -4,13 +4,14 @@
 
 Le Ticket Service est le service propriétaire du domaine de billetterie de TicketFlow. Sa cible est d’émettre les billets après confirmation d’une réservation, de permettre au client authentifié de retrouver ses billets et de fournir une vérification de leur code et de leur statut. Il ne traite pas les paiements et ne réserve pas de capacité.
 
-> **État du dépôt :** le module ne contient actuellement qu’une classe Spring Boot, une configuration minimale et un test de démarrage. Aucun endpoint, modèle de billet, repository, consommateur Kafka, configuration de base de données ou contrat OpenAPI n’est implémenté. Ce document décrit la cible et distingue les choix proposés des exigences du cahier des charges.
+> **État du dépôt :** le module ne contient actuellement qu’une classe Spring Boot, une configuration minimale, un test de démarrage et une spécification OpenAPI proposée. Aucun endpoint, modèle de billet, repository, consommateur Kafka ou configuration de base de données n’est implémenté. Ce document décrit la cible et distingue les choix proposés des exigences du cahier des charges.
 
 ## Responsabilités et frontières
 
 - Posséder les données et règles de cycle de vie des billets.
 - Émettre un billet ou plusieurs billets uniques à partir d’une réservation confirmée.
-- Permettre au client de consulter ses billets et permettre aux opérateurs autorisés de contrôler leur statut et leur utilisation.
+- Permettre au client de consulter ses billets; proposer aux appelants autorisés une vérification en lecture seule du code et du statut.
+- Reporter le check-in et toute transition vers l’état `USED` à une évolution ultérieure; `verify` ne modifie jamais le billet.
 - Publier `TicketIssued` après émission, selon le contrat d’événement à convenir.
 - Ne pas accéder aux bases de Customer, Booking, Payment ou Event. Les identifiants et informations utiles sont reçus par événements ou contrats API.
 - Ne stocker aucune donnée bancaire. Le client propriétaire est déterminé par le contexte JWT validé et/ou par la donnée de réservation fiable; il n’est pas choisi par un paramètre fourni par le client.
@@ -50,7 +51,7 @@ Le service importe actuellement le Config Server au démarrage. Il faut donc ren
 .\mvnw.cmd -pl services/ticket-service spring-boot:run
 ```
 
-Le démarrage nécessite le Config Server et les dépendances locales définies par sa configuration; le test exécuté a notamment pu joindre Config Server, PostgreSQL et Eureka. La configuration d’un broker Kafka n’est pas établie par les fichiers examinés.
+Le démarrage de l’application importe le Config Server et utilise les dépendances locales définies par sa configuration. Le test `contextLoads` utilise le profil `test`, sans Config Server, Eureka ni base de données. La configuration d’un broker Kafka n’est pas établie par les fichiers examinés.
 
 ## Communication avec les autres services
 
@@ -58,12 +59,12 @@ Le démarrage nécessite le Config Server et les dépendances locales définies 
 |---|---|---|
 | Booking Service | `BookingConfirmed` vers Ticket Service; corrélation de réservation | Événement Kafka versionné, consommateur idempotent |
 | Client / Gateway | Consultation des propres billets via REST | JWT OIDC validé côté API; propriétaire tiré du sujet/claims convenus |
-| Contrôle d’accès | Vérification et consommation du billet par un opérateur autorisé | API proposée, autorisation à préciser sans inventer de rôle |
+| Contrôle d’accès | Vérification en lecture seule du code et du statut | API proposée, autorisation à préciser sans inventer de rôle |
 | Notification Service | `TicketIssued` peut alimenter une notification | Kafka; échec de notification sans annuler le billet |
 
 ## Documentation API
 
-Le contrat proposé OpenAPI 3.1 se trouve dans [`src/main/resources/static/openapi.yaml`](src/main/resources/static/openapi.yaml). Ses routes `/api/v1` sont des propositions de conception, pas des routes actuellement exposées. Le contrat définit la consultation des billets du client, la consultation d’un billet autorisée, la vérification d’un code et le contrôle d’utilisation. L’émission asynchrone est décrite par le flux Kafka et n’est pas exposée comme une commande publique permettant de choisir librement une réservation ou un propriétaire.
+Le contrat proposé OpenAPI 3.1 se trouve dans [`src/main/resources/static/openapi.yaml`](src/main/resources/static/openapi.yaml). Ses routes `/api/v1` sont des propositions de conception, pas des routes actuellement exposées. Le contrat définit la consultation des billets du client, la consultation d’un billet autorisée et la vérification en lecture seule d’un code. `POST /api/v1/tickets/verify` ne réalise aucun check-in et ne modifie aucun état. Le check-in et l’état `USED` sont reportés à une évolution future. L’émission asynchrone est décrite par le flux Kafka et n’est pas exposée comme une commande publique permettant de choisir librement une réservation ou un propriétaire.
 
 Swagger UI est fourni par `springdoc-openapi-starter-webmvc-ui` en version `3.0.3`, compatible avec la ligne Spring Boot 4.0.x. La configuration dans `application.properties` lui fait charger le contrat statique `/openapi.yaml` et désactive l’URL de démonstration par défaut. L’interface est servie sur `/swagger-ui/index.html`; sa disponibilité dépend du démarrage du service et du port configuré.
 
@@ -74,7 +75,7 @@ Le dépôt contient un test Spring `contextLoads` uniquement. Les vérifications
 - l’idempotence de `BookingConfirmed` et l’absence de billets en double après redélivrance;
 - la création attendue de billets et la publication fiable de `TicketIssued` (outbox ou garantie équivalente);
 - l’accès d’un client à ses seuls billets, ainsi que les refus sans jeton, avec jeton invalide et pour un autre propriétaire;
-- code invalide, billet déjà utilisé et consommation concurrente;
+- code invalide; billet déjà utilisé et consommation concurrente lors de l’ajout futur du check-in;
 - compatibilité du schéma d’événement et comportement sur message invalide/épuisé.
 
 Ces cas ne sont pas couverts par le code présent. La commande Maven ci-dessus valide le réacteur jusqu’au module; elle ne remplace pas des tests métier ou d’intégration.

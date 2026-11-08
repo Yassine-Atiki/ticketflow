@@ -20,7 +20,7 @@ Le cahier des charges TicketFlow est la référence fonctionnelle. Les mentions 
 Découpage logique recommandé, à matérialiser lorsque l’implémentation Java commencera :
 
 - adaptateur Kafka entrant pour `BookingConfirmed`;
-- cas d’usage d’émission, consultation, vérification et consommation;
+- cas d’usage d’émission, consultation et vérification; la consommation est reportée au futur check-in;
 - modèle et règles métier Ticket;
 - ports de persistance, d’horloge et de génération aléatoire;
 - adaptateur JPA/PostgreSQL et adaptateurs Kafka sortants;
@@ -39,9 +39,11 @@ Une ligne `Ticket` représente une unité d’accès. Si une ligne confirmée a 
 | `bookingLineId` | Référence opaque facultative pour rattacher le billet à la ligne confirmée |
 | `ownerSubject` | Sujet stable de l’identité client, selon le claim OIDC retenu |
 | `eventId` | Référence opaque facultative pour les informations d’affichage nécessaires |
-| `controlCodeHash` | Empreinte du code de contrôle; le code brut n’est pas conservé en clair |
+| `controlCodeCiphertext` | Code de contrôle chiffré avec chiffrement authentifié; jamais conservé en clair |
+| `controlCodeKeyVersion` | Identifiant/version de la clé de chiffrement nécessaire à la restitution et à la rotation |
 | `status` | État du billet selon le cycle de vie défini ci-dessous |
-| `issuedAt`, `usedAt` | Horodatages UTC de création et d’utilisation |
+| `issuedAt` | Horodatage UTC d’émission |
+| `usedAt` | Champ futur si le check-in et l’état `USED` sont ajoutés |
 | `version` | Version optimiste éventuelle pour les transitions concurrentes |
 
 L’identifiant d’événement et le libellé affiché ne doivent être stockés que si nécessaires au billet et à sa consultation. Pas de relation ORM vers les entités d’autres services. La base dédiée et PostgreSQL sont la cible; aucun datasource ni migration n’est présent à ce jour.
@@ -53,11 +55,10 @@ Le cahier des charges impose une vérification de statut, mais ne fixe pas la li
 | État courant | Événement/commande | État suivant |
 |---|---|---|
 | absent | réservation confirmée admissible | `ISSUED` |
-| `ISSUED` | contrôle d’accès réussi | `USED` |
 | `ISSUED` | annulation confirmée par le domaine propriétaire | `CANCELLED` (à confirmer) |
-| `USED`, `CANCELLED` | nouvelle utilisation | refus sans mutation |
+| `ISSUED`, `CANCELLED` | vérification du code | même état (opération sans mutation) |
 
-Ne pas traiter un événement de paiement réussi comme équivalent à `BookingConfirmed`. Les transitions terminales, l’impact d’un remboursement et les cas de réémission doivent être arbitrés avec Booking/Payment.
+Le check-in et l’état `USED` sont reportés à une évolution future; aucun endpoint décrit ici ne consomme un billet. Ne pas traiter un événement de paiement réussi comme équivalent à `BookingConfirmed`. Les transitions terminales, l’impact d’un remboursement et les cas de réémission doivent être arbitrés avec Booking/Payment.
 
 ## Émission, code et idempotence
 
@@ -67,9 +68,10 @@ Ne pas traiter un événement de paiement réussi comme équivalent à `BookingC
 
 1. Dédupliquer chaque réservation confirmée avec une contrainte unique persistée sur la clé métier retenue, par exemple `(bookingId, bookingLineId, unitIndex)`. Cette clé doit être cohérente avec l’identifiant d’événement et le contrat de réservation.
 2. Générer un secret aléatoire cryptographiquement sûr avec suffisamment d’entropie; ne pas dériver le code d’un UUID séquentiel, de l’identifiant client ou du booking.
-3. Ne persister que l’empreinte du code si le besoin ne requiert pas de le réafficher. Si le produit doit rendre le même code après émission, définir explicitement une stratégie de conservation chiffrée et de rotation.
-4. Publier `TicketIssued` avec un identifiant d’événement unique, version, horodatage UTC, identifiant d’agrégat et corrélation; ne jamais y inclure le code brut ni des données personnelles non nécessaires.
-5. Persister le ticket et l’intention de publication dans une outbox transactionnelle, ou démontrer une garantie équivalente. Sans cela, une panne après commit DB mais avant Kafka perdrait `TicketIssued`.
+3. Le contrat OpenAPI restitue le même code lors des consultations autorisées du billet. Le stocker sous forme chiffrée avec chiffrement authentifié (par exemple AES-256-GCM); le champ chiffré comprend le nonce et le tag d’authentification, et `controlCodeKeyVersion` identifie la clé utilisée. Le code brut et les clés ne sont jamais journalisés.
+4. Garder les clés hors de la base et du dépôt, dans un gestionnaire de secrets approprié à l’environnement. Pour la rotation, chiffrer les nouvelles émissions avec la nouvelle version, relire temporairement les anciennes versions et rechiffrer les enregistrements existants avant de retirer l’ancienne clé. La plateforme de gestion des clés et la politique de rétention doivent être confirmées avant l’implémentation.
+5. Publier `TicketIssued` avec un identifiant d’événement unique, version, horodatage UTC, identifiant d’agrégat et corrélation; ne jamais y inclure le code brut ni des données personnelles non nécessaires.
+6. Persister le ticket et l’intention de publication dans une outbox transactionnelle, ou démontrer une garantie équivalente. Sans cela, une panne après commit DB mais avant Kafka perdrait `TicketIssued`.
 
 La contrainte de déduplication, l’émission et l’outbox doivent être transactionnelles localement. Une redélivrance identique doit être acquittée sans créer un second billet ni deuxième effet externe. La politique de retry et de dead-letter doit être bornée et documentée.
 
@@ -90,14 +92,15 @@ Le préfixe `/api/v1` suit la convention du cahier des charges (section 7.2). Le
 
 - `GET /api/v1/me/tickets` : l’identité propriétaire provient du jeton vérifié; aucun `customerId` n’est accepté comme autorité.
 - `GET /api/v1/tickets/{ticketId}` : contrôle d’appartenance ou autorisation opérateur côté service.
-- `POST /api/v1/tickets/verify` : vérifie un code sans le refléter dans les réponses ou journaux.
-- `POST /api/v1/tickets/{ticketId}/use` : consomme atomiquement un billet lors du contrôle d’accès. L’existence et le nom des rôles/scopes restent à arbitrer.
+- `POST /api/v1/tickets/verify` : vérifie le code et le statut sans mutation; cette opération ne réalise pas le check-in.
+
+Le check-in, l’opération de consommation et l’état `USED` ne font pas partie du contrat actuel; ils nécessitent une décision produit et une mise à jour coordonnée du contrat et du Gateway avant leur implémentation.
 
 Réponses d’erreur structurées et statuts HTTP cohérents sont décrits dans OpenAPI. Ne pas révéler si un ticket appartenant à un autre client existe; les politiques 403/404 doivent être choisies en cohérence avec le modèle de menace.
 
 ## Sécurité et autorisations
 
-OIDC/JWT est prévu par le cahier des charges. Le service doit valider lui-même signature, expiration, issuer et audience selon le realm et le contrat convenus, même si le Gateway filtre les appels. Il doit dériver le propriétaire d’un claim stable validé. L’autorisation opérateur pour vérifier/consommer des billets doit reprendre les rôles/scopes établis par le produit; le PDF ne nomme pas ces rôles, donc aucun nom n’est imposé ici.
+OIDC/JWT est prévu par le cahier des charges. Le service doit valider lui-même signature, expiration, issuer et audience selon le realm et le contrat convenus, même si le Gateway filtre les appels. Il doit dériver le propriétaire d’un claim stable validé. L’autorisation opérateur pour vérifier un billet doit reprendre les rôles/scopes établis par le produit; une autorisation distincte pour le futur check-in restera à définir. Le PDF ne nomme pas ces rôles, donc aucun nom n’est imposé ici.
 
 Ne jamais journaliser le bearer token ni le code de contrôle. Limiter les données de réponse aux champs nécessaires. La vérification d’un code ne doit pas constituer une autorisation de consulter un profil ou une réservation complète.
 
@@ -107,17 +110,17 @@ Ne jamais journaliser le bearer token ni le code de contrôle. Limiter les donn�
 - rejeu déjà traité : succès idempotent sans émission supplémentaire;
 - dépendance Kafka/base indisponible : ne pas acquitter prématurément; reprise bornée avec traitement d’échec;
 - code inconnu : réponse générique de vérification invalide;
-- ticket déjà utilisé ou annulé : conflit métier sans nouvelle transition;
+- ticket annulé : le résultat de vérification restitue `CANCELLED` sans mutation. L’état `USED` et les conflits de consommation ne s’appliquent qu’après l’ajout futur du check-in;
 - erreur interne : réponse structurée sans stack trace ni secret.
 
 ## Vérifications à ajouter à l’implémentation
 
-Tests de contrat HTTP et validation, accès propriétaire et refus sans/avec jeton invalide, redélivrance Kafka, contrainte concurrente d’émission, atomicité de consommation d’un même ticket, outbox lors d’une panne entre commit et publication, et traitement des messages invalides/épuisés. Aucun de ces scénarios n’est actuellement testé par le seul `contextLoads`. Lors du `verify` effectué, le test a chargé sa configuration distante et s’est connecté à PostgreSQL via Config Server; il n’est donc pas isolé de l’environnement local.
+Tests de contrat HTTP et validation, accès propriétaire et refus sans/avec jeton invalide, redélivrance Kafka, contrainte concurrente d’émission, outbox lors d’une panne entre commit et publication, et traitement des messages invalides/épuisés. L’atomicité de consommation ne s’ajoutera qu’avec le futur check-in. Aucun de ces scénarios métier n’est actuellement testé par le seul `contextLoads`; celui-ci utilise le profil `test` et n’exige pas Config Server, Eureka ou PostgreSQL.
 
 ## Points à confirmer
 
 - Schéma/version et topic de `BookingConfirmed`, nombre de tickets par ligne, clé de partition et contrat exact de `TicketIssued`.
 - Identifiant client stable dans JWT, audience/issuer, realm et rôles/scopes d’accès au contrôle.
 - États, politique d’annulation/remboursement, réémission, et sémantique exacte de la vérification versus consommation.
-- Base, migrations et rétention; nécessité de restituer le code après émission ou de ne l’afficher qu’une seule fois.
+- Base et migrations; gestionnaire de clés, politique de rotation et rétention du code chiffré.
 - Configuration centralisée, ports, Gateway et disponibilité des services connexes. Le dossier `payment-service` et son README ne sont pas présents dans les sources suivies examinées.
