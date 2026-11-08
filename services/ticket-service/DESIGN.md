@@ -91,7 +91,7 @@ Kafka est déclaré dans le POM, mais aucun broker, topic, sérialiseur, listene
 Le préfixe `/api/v1` suit la convention du cahier des charges (section 7.2). Les opérations détaillées sont dans `src/main/resources/static/openapi.yaml` et demeurent des propositions, car aucun endpoint de Ticket Service n’est actuellement implémenté.
 
 - `GET /api/v1/me/tickets` : l’identité propriétaire provient du jeton vérifié; aucun `customerId` n’est accepté comme autorité.
-- `GET /api/v1/tickets/{ticketId}` : contrôle d’appartenance ou autorisation opérateur côté service.
+- `GET /api/v1/me/tickets/{ticketId}` : consultation réservée au propriétaire authentifié; le service vérifie l’appartenance au sujet JWT et ne permet pas à un autre client de consulter le billet.
 - `POST /api/v1/tickets/verify` : vérifie le code et le statut sans mutation; cette opération ne réalise pas le check-in.
 
 Le check-in, l’opération de consommation et l’état `USED` ne font pas partie du contrat actuel; ils nécessitent une décision produit et une mise à jour coordonnée du contrat et du Gateway avant leur implémentation.
