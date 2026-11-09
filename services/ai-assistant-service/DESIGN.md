@@ -2,7 +2,7 @@
 
 ## Statut et références
 
-Ce document décrit une architecture à discuter, sans implémentation. Le périmètre documentaire est présenté dans le [README](README.md). Les rôles Telegram–LLM–MCP proviennent de l'extrait du cahier des charges partagé dans la conversation « Résumé cahier des charges », lignes 7 et 8 du tableau des microservices. Les autres références vérifiables sont le [README racine](../../README.md), les [consignes du dépôt](../../AGENTS.md), le [POM parent](../../pom.xml) et les sources de Customer Service citées ci-dessous.
+Ce document distingue le socle Spring Boot existant de l’architecture métier à discuter. Le module, sa configuration technique, Swagger UI et le test de contexte sont présents ; le dialogue Telegram, le LLM et MCP ne sont pas implémentés. Le périmètre documentaire est présenté dans le [README](README.md). Les rôles Telegram–LLM–MCP proviennent de l'extrait du cahier des charges partagé dans la conversation « Résumé cahier des charges », lignes 7 et 8 du tableau des microservices. Les autres références vérifiables sont le [README racine](../../README.md), les [consignes du dépôt](../../AGENTS.md), le [POM parent](../../pom.xml) et les sources de Customer Service citées ci-dessous.
 
 Le cahier des charges intégral n'est pas versionné. Les choix de transport, DTO et opérations HTTP ci-dessous sont **à valider** ; les priorités suggérées dans la conversation antérieure ne sont pas reprises comme engagements.
 
@@ -19,7 +19,11 @@ flowchart LR
 
 Les flèches représentent des échanges logiques et ne fixent ni protocole MCP ni déploiement. Telegram transmet les messages à l'assistant ; l'assistant dialogue avec le LLM et reste responsable de l'exécution contrôlée des appels MCP. Le LLM peut proposer un appel d'outil, mais ne reçoit ni accès direct aux API métier ni identifiants de base de données. Le serveur MCP accède aux services par leurs contrats publics, avec l'autorisation requise.
 
-Gateway, Eureka et Config Server appartiennent au socle existant ; la route, l'enregistrement et la configuration de l'assistant ne sont pas définis dans cette contribution.
+Le module `ai-assistant-service` est déclaré dans le réacteur Maven. Sa classe de démarrage Spring Boot inclut `@EnableDiscoveryClient` et son POM contient Config Client et Eureka Client. Le démarrage normal charge la configuration distante depuis `http://localhost:8888`, label `main` ; Config Server doit être accessible.
+
+La [configuration dédiée distante](https://github.com/Yassine-Atiki/ticketflow-config/blob/main/ai-assistant-service.yml) définit actuellement le port `8087` et active l’enregistrement et la consultation Eureka. La [configuration commune](https://github.com/Yassine-Atiki/ticketflow-config/blob/main/application.yml) fournit `http://localhost:8761/eureka/`. Ces réglages décrivent l’intégration prévue au démarrage ; la présence de configuration ne démontre pas à elle seule un enregistrement effectif.
+
+La [configuration Gateway publiée](https://github.com/Yassine-Atiki/ticketflow-config/blob/main/api-gateway.yml) comporte des routes Customer, Payment et Ticket, mais aucune route assistant ; son mécanisme de création automatique des routes est désactivé. Swagger UI et le contrat restent accessibles directement sur le port de l’assistant. L’ajout d’une route partagée reste à coordonner.
 
 ## Frontières de responsabilité
 
@@ -33,7 +37,7 @@ Gateway, Eureka et Config Server appartiennent au socle existant ; la route, l'e
 | Services métier | Posséder leurs données et appliquer leurs règles et contrôles sur les ressources. | Leurs réponses sont la source des faits métier ; le modèle ne doit pas inventer un résultat réussi. |
 | Notification Service | Porter confirmations, rappels et notifications métier selon l'extrait du sujet. | Partage éventuel du bot et coordination avec les réponses de dialogue à préciser. |
 
-Ces composants sont logiques : aucun paquet Java, stockage ou nouvelle dépendance n'est imposé.
+Les composants de dialogue de ce tableau restent logiques. Seul le socle technique décrit ci-dessus est présent ; aucun stockage ni dépendance LLM, Telegram ou MCP n’est ajouté pour cette correction.
 
 ## Interactions envisagées
 
@@ -65,11 +69,22 @@ La limite proposée de 4 000 caractères est un choix interne à discuter ; elle
 | `services/customer-service/src/main/java/com/ticketflow/customerservice/dto/CustomerRequest.java` et `CustomerResponse.java` | Requête : `firstName`, `lastName`, `email` obligatoires, `phone` facultatif. Réponse : `id` de type `Long`, mêmes données de profil et `createdAt`. Aucun champ Telegram ni identité Keycloak dans ces DTO. Aucun DTO client n'est recopié dans le contrat assistant. |
 | `services/customer-service/src/main/java/com/ticketflow/customerservice/exceptions/ApiExceptionHandler.java` | `ProblemDetail` : 400 validation, 404 client absent, 409 e-mail dupliqué. Réutilisation proposée du format d'erreur, sans importer ces erreurs métier comme opérations de l'assistant. |
 | README de Customer Service | Le profil métier est distinct de l'authentification, prévue avec Keycloak ultérieurement. Posséder un identifiant de client ou lister les clients ne permet pas d'authentifier un utilisateur Telegram. |
-| `pom.xml` parent | Java 21, Boot 4.0.8, Cloud 2025.1.2 ; modules Customer, Gateway, Discovery et Config seulement. Compatibilité et version Spring AI à vérifier séparément. |
-| `services/api-gateway/src/main/resources/application.yaml` | Charge sa configuration depuis Config Server ; aucune route assistant définie dans ce fichier. La configuration externe et un routage effectif ne sont pas vérifiés ici. |
-| Dossiers `services/` et fichiers versionnés | Event, Booking, Payment, Ticket, Notification et MCP absents ; aucun contrat OpenAPI métier versionné trouvé. Les API Java/README de Customer constituent les seules interfaces métier observables, sans test d'un service lancé. |
+| [POM parent](../../pom.xml) | Java 21, Boot 4.0.8, Cloud 2025.1.2 ; sept modules déclarés : Customer, Gateway, Discovery, Config, AI Assistant, Payment et Ticket. Compatibilité et version Spring AI à vérifier séparément. |
+| [Configuration locale de l’assistant](src/main/resources/application.yaml) et [POM](pom.xml) | Config Client/Eureka présents ; import obligatoire de Config Server et label `main`. Port `8087` et paramètres Eureka fournis par les configurations distantes citées plus haut. |
+| `services/api-gateway/src/main/resources/application.yaml` et configuration Gateway distante | Le Gateway importe Config Server. La configuration partagée consultée comporte Customer, Payment et Ticket, sans route assistant ; découverte automatique des routes désactivée. |
+| [Contrat Payment](../payment-service/src/main/resources/static/openapi.yaml) | Module présent ; contrat OpenAPI 3.1.0 version `1.0.0` disponible. Sa présence documente une interface proposée et ne démontre pas l’implémentation des opérations ni une intégration à l’assistant. |
+| [Contrat Ticket](../ticket-service/src/main/resources/static/openapi.yaml) | Module présent ; contrat OpenAPI 3.1.0 version `1.0.0` disponible. Aucun appel ni outil MCP Ticket n’est intégré à l’assistant. |
+| Dossiers `services/` et fichiers versionnés | Event, Booking, Notification et MCP restent absents de cette branche. Les contrats Event/Booking et le catalogue MCP sont toujours à fournir ; les contrats Payment/Ticket existants ne les remplacent pas. |
 
-La cohérence vérifiable est donc structurelle et documentaire. Recherche d'événements, détails et réservations nécessitent les contrats des responsables concernés. Aucun nom d'outil, chemin Event/Booking, topic Kafka ou schéma de réponse métier futur n'est fixé.
+Les contrats Customer, Payment et Ticket disponibles servent à vérifier les frontières des services ; aucune consommation de ces API n’est implémentée dans l’assistant. Recherche d’événements, détails et réservations nécessitent encore les contrats Event/Booking et les outils autorisés du responsable MCP. Aucun nom d’outil, chemin Event/Booking, rôle, topic Kafka ou schéma métier futur n’est fixé.
+
+## Documentation servie et vérification du socle
+
+Le [contrat proposé](docs/openapi.yaml) décrit deux opérations `POST` de dialogue et webhook. Aucun contrôleur ne les implémente actuellement. Le [POM](pom.xml) copie ce fichier dans les ressources statiques sans en maintenir une deuxième source ; Springdoc affiche ce contrat avec l’exécution désactivée.
+
+Avec le port distant actuel, la documentation est disponible à `http://localhost:8087/swagger-ui/index.html` et `http://localhost:8087/openapi.yaml`. La santé technique est exposée par Actuator ; ces ressources ne constituent pas une implémentation du dialogue. Les prérequis et commandes de lancement sont dans le [README](README.md#configuration-et-lancement).
+
+Le test de contexte active `test` via `@ActiveProfiles` et sélectionne explicitement sa [configuration dédiée](src/test/resources/application-test.yaml) via `spring.config.location=classpath:/application-test.yaml`. Cette configuration remplace les fichiers de configuration normaux pour ce test et évite de traiter leur import Config Server avant le profil. Elle désactive Config Client, Eureka et l’enregistrement automatique pour charger le contexte sans infrastructure locale ; les classes applicatives et leurs auto-configurations restent chargées par `@SpringBootTest`. Ce profil se trouve uniquement dans les ressources de test et n’est pas embarqué dans l’application distribuée. Aucun datasource ni exclusion JPA n’est ajouté.
 
 ## Sécurité, données et indisponibilités
 
@@ -77,7 +92,7 @@ Les secrets Telegram, LLM et MCP devront être externalisés. Ne pas transmettre
 
 Le filtrage des outils côté assistant complète les contrôles MCP et métier ; il ne les remplace pas. Les messages utilisateurs, sorties du modèle et résultats d'outils ne peuvent modifier les autorisations. Une demande d'accès à une réservation d'autrui doit être refusée côté serveur, même si elle est formulée dans une instruction au modèle.
 
-Le contrat propose `application/problem+json`, proche de la convention existante. Les détails doivent être compréhensibles sans secrets ni réponse brute du fournisseur. Aucun résultat métier de substitution n'est prévu lors d'une indisponibilité. Les scénarios de validation futurs incluent entrées invalides, secret/jeton invalide, accès interdit, outil non autorisé, doublons Telegram et pannes/délais LLM, MCP et Bot API ; ils ne sont pas exécutés à ce stade documentaire.
+Le contrat propose `application/problem+json`, proche de la convention existante. Les détails doivent être compréhensibles sans secrets ni réponse brute du fournisseur. Aucun résultat métier de substitution n'est prévu lors d'une indisponibilité. Les scénarios de validation futurs incluent entrées invalides, secret/jeton invalide, accès interdit, outil non autorisé, doublons Telegram et pannes/délais LLM, MCP et Bot API ; ces scénarios métier restent à implémenter et tester. Le test de contexte isolé porte uniquement sur le chargement du socle Spring Boot.
 
 ## Questions ouvertes pour la réunion
 
@@ -89,7 +104,7 @@ Le contrat propose `application/problem+json`, proche de la convention existante
 6. Choisir le fournisseur LLM, la version Spring AI compatible, les données autorisées à quitter TicketFlow et les limites de coût et de latence.
 7. Décider si un historique est nécessaire, avec durée de conservation et suppression ; aucun stockage retenu pour l'instant.
 8. Clarifier la propriété du bot si Notification Service envoie aussi sur Telegram et les responsabilités d'envoi/reprise.
-9. Définir ultérieurement port, configuration, découverte, routage et exploitation, sans modifier le socle pédagogique pour cette livraison.
+9. Coordonner le futur routage Gateway et l’exploitation. Le port distant actuel (`8087`), le chargement Config Server et le client Eureka existent déjà ; leur configuration de déploiement et les communications réelles restent à valider dans l’environnement cible.
 
 ## Références de protocole
 
