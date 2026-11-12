@@ -1,0 +1,81 @@
+spring:
+    application:
+        name: booking-service
+    config:
+        import: "optional:configserver:http://localhost:8888"
+
+# ---------------------------------------------------------------------------
+# Configuration locale de développement (utilisée quand le config-server
+# n'est pas disponible). Ne pas committer de secrets réels ici.
+# ---------------------------------------------------------------------------
+---
+spring:
+    config:
+        activate:
+            on-cloud-platform: none
+    datasource:
+        url: jdbc:postgresql://127.0.0.1:5433/booking_db
+        username: booking_user
+        password: booking_dev
+    jpa:
+        hibernate:
+            ddl-auto: validate
+    flyway:
+        enabled: true
+    kafka:
+        bootstrap-servers: localhost:9092
+        consumer:
+            group-id: booking-service
+            auto-offset-reset: earliest
+            key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+            value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+            properties:
+                spring.json.trusted.packages: "com.ticketflow.*"
+        producer:
+            key-serializer: org.apache.kafka.common.serialization.StringSerializer
+            value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+server:
+    port: 8083
+
+eureka:
+    client:
+        enabled: false
+
+springdoc:
+    swagger-ui:
+        enabled: true
+        url: /openapi.yml
+    api-docs:
+        enabled: true
+
+booking:
+    hold-duration: PT15M
+    max-quantity-per-order: 10
+
+resilience4j:
+    circuitbreaker:
+        instances:
+            ticket-service:
+                sliding-window-size: 10
+                failure-rate-threshold: 50
+                wait-duration-in-open-state: 10s
+            customer-service:
+                sliding-window-size: 10
+                failure-rate-threshold: 50
+                wait-duration-in-open-state: 10s
+    timelimiter:
+        instances:
+            ticket-service:
+                timeout-duration: 3s
+            customer-service:
+                timeout-duration: 3s
+    retry:
+        instances:
+            ticket-service:
+                max-attempts: 3
+                wait-duration: 500ms
+            customer-service:
+                max-attempts: 3
+                wait-duration: 500ms
+
