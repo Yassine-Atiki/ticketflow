@@ -1,0 +1,186 @@
+openapi: 3.0.3
+info:
+  title: TicketFlow - Customer Service
+  version: 0.1.0
+  description: >
+    Profils clients et préférences de notification.
+    L'authentification est déléguée à Keycloak (non encore intégrée).
+    Les erreurs suivent RFC 9457 (ProblemDetail).
+servers:
+  - url: http://localhost:8081
+    description: Local
+tags:
+  - name: Customers
+  - name: Preferences
+  - name: Config
+paths:
+  /api/customers:
+    post:
+      tags: [Customers]
+      summary: Créer un client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CustomerRequest' }
+      responses:
+        '201':
+          description: Client créé (en-tête Location)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CustomerResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    get:
+      tags: [Customers]
+      summary: Lister les clients
+      responses:
+        '200':
+          description: Liste des clients
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CustomerResponse' }
+  /api/customers/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Customers]
+      summary: Consulter un client
+      responses:
+        '200':
+          description: Client trouvé
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CustomerResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Customers]
+      summary: Modifier un client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CustomerRequest' }
+      responses:
+        '200':
+          description: Client modifié
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CustomerResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    delete:
+      tags: [Customers]
+      summary: Supprimer un client
+      responses:
+        '204': { description: Supprimé }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/customers/{id}/preferences:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Preferences]
+      summary: Consulter les préférences (valeurs par défaut si aucune enregistrée)
+      description: Utilisé par Notification Service pour choisir le canal et la langue.
+      responses:
+        '200':
+          description: Préférences
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PreferencesResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Preferences]
+      summary: Créer ou remplacer les préférences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PreferencesRequest' }
+      responses:
+        '200':
+          description: Préférences enregistrées
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PreferencesResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /api/config/message:
+    get:
+      tags: [Config]
+      summary: Démonstration de la configuration centralisée
+      responses:
+        '200':
+          description: Message lu depuis le Config Server
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+  responses:
+    BadRequest:
+      description: Validation échouée
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: Client introuvable
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: Email déjà utilisé
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+  schemas:
+    CustomerRequest:
+      type: object
+      required: [firstName, lastName, email]
+      properties:
+        firstName: { type: string }
+        lastName: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string }
+    CustomerResponse:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        firstName: { type: string }
+        lastName: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        createdAt: { type: string, format: date-time }
+    PreferencesRequest:
+      type: object
+      required: [language, notificationChannel]
+      properties:
+        language: { type: string, enum: [fr, en, ar] }
+        notificationChannel: { type: string, enum: [EMAIL, TELEGRAM] }
+        marketingOptIn: { type: boolean }
+    PreferencesResponse:
+      type: object
+      properties:
+        customerId: { type: integer, format: int64 }
+        language: { type: string }
+        notificationChannel: { type: string, enum: [EMAIL, TELEGRAM] }
+        marketingOptIn: { type: boolean }
+    Problem:
+      type: object
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
