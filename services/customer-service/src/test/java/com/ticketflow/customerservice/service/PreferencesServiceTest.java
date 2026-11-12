@@ -7,10 +7,12 @@ import static org.mockito.Mockito.when;
 
 import com.ticketflow.customerservice.dto.PreferencesRequest;
 import com.ticketflow.customerservice.dto.PreferencesResponse;
+import com.ticketflow.customerservice.entities.Customer;
 import com.ticketflow.customerservice.entities.CustomerPreferences;
 import com.ticketflow.customerservice.entities.NotificationChannel;
 import com.ticketflow.customerservice.exceptions.CustomerNotFoundException;
 import com.ticketflow.customerservice.repos.CustomerPreferencesRepo;
+import com.ticketflow.customerservice.repos.CustomerRepo;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -22,6 +24,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class PreferencesServiceTest {
 
     @Mock CustomerService customers;
+    @Mock CustomerRepo customerRepo;
     @Mock CustomerPreferencesRepo repo;
     @InjectMocks PreferencesService service;
 
@@ -38,6 +41,8 @@ class PreferencesServiceTest {
 
     @Test
     void putCreatesThenReturnsSavedValues() {
+        when(customerRepo.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(new Customer("A", "B", "a@b.c", null)));
         when(repo.findByCustomerId(1L)).thenReturn(Optional.empty());
         when(repo.save(any(CustomerPreferences.class))).thenAnswer(i -> i.getArgument(0));
 
@@ -50,9 +55,18 @@ class PreferencesServiceTest {
     }
 
     @Test
-    void unknownCustomerIsRejected() {
+    void getRejectsUnknownCustomer() {
         when(customers.get(99L)).thenThrow(new CustomerNotFoundException(99L));
 
         assertThatThrownBy(() -> service.get(99L)).isInstanceOf(CustomerNotFoundException.class);
+    }
+
+    @Test
+    void putRejectsUnknownCustomer() {
+        when(customerRepo.findByIdForUpdate(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.put(99L,
+                new PreferencesRequest("fr", NotificationChannel.EMAIL, false)))
+                .isInstanceOf(CustomerNotFoundException.class);
     }
 }
