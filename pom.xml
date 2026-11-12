@@ -31,6 +31,7 @@
         <module>services/ai-assistant-service</module>
         <module>services/payment-service</module>
         <module>services/ticket-service</module>
+        <module>services/booking-service</module>
     </modules>
 
     <dependencyManagement>
