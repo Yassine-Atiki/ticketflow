@@ -64,36 +64,6 @@ L'authentification est déléguée à Keycloak (intégration prévue).
 
 ## Fonctionnalités
 - CRUD client (`/api/customers`), email unique
-- Préférences : langue (fr/en/ar), canal (EMAIL/TELEGRAM), opt-in marketing
-- Prévu : liaison du compte Telegram (FR-017)
-
-## Technologies
-Java 21, Spring Boot 4, Spring Data JPA, PostgreSQL 17 (`customer_db`), Spring Cloud Config, Eureka, springdoc-openapi.
-
-## Dépendances avec les autres services
-| Service | Relation |
-|---|---|
-| Config Server | fournit la configuration (`customer-service.yml`, dépôt `ticketflow-config`) |
-| Discovery Server | enregistrement Eureka |
-| Booking Service | appellera `GET /api/customers/{id}` pour vérifier le client |
-| Notification Service | appellera `GET /api/customers/{id}/preferences` |
-| AI Assistant | liaison Telegram (prévue) |
-
-## Configuration et lancement
-1. `docker compose -f infra/docker-compose.yml up -d postgres`
-2. Démarrer `config-server` (8888), puis `discovery-server` (8761)
-3. `./mvnw -pl services/customer-service spring-boot:run`
-4. Swagger UI : http://localhost:8081/swagger-ui.html
-5. Contrat : `src/main/resources/static/openapi.yaml`
-
-Les tests utilisent H2 et ne nécessitent ni Config Server ni Eureka.
-## Rôle dans TicketFlow
-Gère les comptes clients, les profils et les préférences de notification.
-Source de vérité des clients pour Booking, Notification et AI Assistant.
-L'authentification est déléguée à Keycloak (intégration prévue).
-
-## Fonctionnalités
-- CRUD client (`/api/customers`), email unique
 - Préférences : langue (fr/en/ar), canal (EMAIL/TELEGRAM), opt-in marketing (`/api/customers/{id}/preferences`)
 - Prévu : liaison du compte Telegram (FR-017)
 
