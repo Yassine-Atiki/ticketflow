@@ -47,3 +47,14 @@ Toute autre transition est refusée (409).
 - Format des événements Kafka (JSON, champs communs, clé de partition).
 - Endpoints internes : comment les protéger (rôle de service, non exposés par la Gateway).
 - Stockage des images : URL simple ou service dédié.
+
+## Idempotence des réservations
+
+- Chaque réservation est identifiée par un bookingId.
+- Event Service conserve les réservations de capacité traitées.
+- Une réservation répétée avec les mêmes données ne modifie pas le stock une deuxième fois.
+- Une réservation répétée avec des données différentes retourne HTTP 409.
+- Une libération doit correspondre à une réservation existante.
+- Une libération répétée ne restitue pas les places une deuxième fois.
+- Une libération contradictoire retourne HTTP 409.
+- Les modifications de capacité et l'enregistrement de l'opération seront effectués dans une même transaction.

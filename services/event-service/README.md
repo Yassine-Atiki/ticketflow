@@ -4,15 +4,38 @@
 Gérer les événements : catégories, lieux, dates, tarifs et capacités.
 Permettre la création, la modification, la publication, la fermeture et la recherche d'événements.
 
-## Fonctionnalités
-- Créer, modifier, supprimer (brouillon) un événement
-- Publier / fermer / annuler un événement
-- Gérer les catégories et les lieux
-- Gérer les catégories de billets (tarif + capacité par catégorie)
-- Rechercher et filtrer les événements publiés (mot-clé, catégorie, ville, date) avec pagination
-- Consulter la disponibilité et le prix d'un événement (utilisé par le Booking Service)
-- Réserver / libérer de la capacité de façon atomique (endpoints internes)
-- Publier des événements Kafka (EventPublished, EventClosed, EventCancelled)
+
+## État d'avancement
+
+Cette PR contient le squelette du Event Service
+et une proposition de contrat API OpenAPI.
+
+### Réalisé
+- Création du module Event Service
+- Configuration Maven et Java 21
+- Intégration Spring Cloud Config
+- Configuration PostgreSQL
+- Préparation Kafka et Eureka
+- Documentation OpenAPI et Swagger UI
+- Configuration des tests avec H2
+
+### À développer
+- Entités JPA et repositories
+- Controllers et services métier
+- Gestion des événements
+- Gestion des catégories et des lieux
+- Gestion des billets et des capacités
+- Réservation et libération idempotentes
+- Publication des messages Kafka
+- Migrations Flyway
+
+## Important
+
+Les endpoints décrits dans Swagger constituent
+un contrat API proposé.
+
+Ils ne sont pas encore implémentés et ne peuvent
+pas être utilisés pour effectuer des opérations métier.
 
 ## Technologies
 Java 21, Spring Boot, Spring Data JPA, PostgreSQL 17, Flyway, Kafka,

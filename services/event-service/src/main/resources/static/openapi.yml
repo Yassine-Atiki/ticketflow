@@ -1,7 +1,15 @@
+
 openapi: 3.0.3
+
 info:
   title: Event Service API
-  description: Gestion des événements, catégories, lieux et catégories de billets (TicketFlow).
+  description: |
+    Gestion des événements, catégories, lieux et catégories de billets (TicketFlow).
+
+    Ce document présente le contrat API proposé pour Event Service.
+    Les endpoints métier sont documentés mais ne sont pas encore implémentés.
+    Les opérations de réservation et de libération de capacité
+    seront développées ultérieurement.
   version: 1.0.0
 
 servers:
@@ -477,11 +485,19 @@ components:
         city: { type: string }
         capacity: { type: integer }
 
+
     CapacityRequest:
       type: object
-      required: [quantity]
+      required: [ bookingId, quantity ]
       properties:
-        quantity: { type: integer, minimum: 1, example: 2 }
+        bookingId:
+          type: string
+          format: uuid
+          description: Identifiant unique de la réservation Booking
+        quantity:
+          type: integer
+          minimum: 1
+          example: 2
 
     CapacityResponse:
       type: object

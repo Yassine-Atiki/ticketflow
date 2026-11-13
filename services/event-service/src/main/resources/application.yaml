@@ -1,54 +1,9 @@
+
 spring:
   application:
     name: event-service
   config:
-    import: "optional:configserver:http://localhost:8888"
+    import: "configserver:http://localhost:8888"
   cloud:
     config:
       label: main
-
-  datasource:
-    url: jdbc:postgresql://127.0.0.1:5433/event_db
-    username: event_user
-    password: event_dev
-    driver-class-name: org.postgresql.Driver
-
-  jpa:
-    hibernate:
-      ddl-auto: create-drop
-    open-in-view: false
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
-
-  flyway:
-    enabled: false
-
-  kafka:
-    bootstrap-servers: localhost:9092
-
-  autoconfigure:
-    exclude: org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
-
-server:
-  port: 8082
-
-eureka:
-  client:
-    service-url:
-      defaultZone: http://localhost:8761/eureka/
-  instance:
-    prefer-ip-address: true
-
-springdoc:
-  swagger-ui:
-    path: /swagger-ui.html
-    url: /openapi.yml
-  api-docs:
-    enabled: true
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info
