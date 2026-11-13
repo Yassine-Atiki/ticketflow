@@ -1,0 +1,514 @@
+
+openapi: 3.0.3
+
+info:
+  title: Event Service API
+  description: |
+    Gestion des événements, catégories, lieux et catégories de billets (TicketFlow).
+
+    Ce document présente le contrat API proposé pour Event Service.
+    Les endpoints métier sont documentés mais ne sont pas encore implémentés.
+    Les opérations de réservation et de libération de capacité
+    seront développées ultérieurement.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: Via API Gateway
+  - url: http://localhost:8082
+    description: Direct
+
+tags:
+  - name: Events
+  - name: Ticket tiers
+  - name: Categories
+  - name: Venues
+  - name: Internal
+
+security:
+  - bearerAuth: []
+
+paths:
+  /api/v1/events:
+    post:
+      tags: [Events]
+      summary: Créer un événement (statut DRAFT)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEventRequest'
+      responses:
+        '201':
+          description: Événement créé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    get:
+      tags: [Events]
+      summary: Rechercher les événements publiés
+      security: []
+      parameters:
+        - { name: q, in: query, schema: { type: string }, description: Mot-clé }
+        - { name: categoryId, in: query, schema: { type: integer, format: int64 } }
+        - { name: city, in: query, schema: { type: string } }
+        - { name: dateFrom, in: query, schema: { type: string, format: date } }
+        - { name: dateTo, in: query, schema: { type: string, format: date } }
+        - { name: page, in: query, schema: { type: integer, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, default: 20 } }
+        - { name: sort, in: query, schema: { type: string, example: 'startDate,asc' } }
+      responses:
+        '200':
+          description: Liste paginée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageEventSummary'
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /api/v1/events/{id}:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    get:
+      tags: [Events]
+      summary: Détail d'un événement
+      security: []
+      responses:
+        '200':
+          description: Événement trouvé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventResponse'
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Events]
+      summary: Modifier un événement
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateEventRequest'
+      responses:
+        '200':
+          description: Événement modifié
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    delete:
+      tags: [Events]
+      summary: Supprimer un événement (DRAFT uniquement)
+      responses:
+        '204':
+          description: Supprimé
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/events/{id}/publish:
+    patch:
+      tags: [Events]
+      summary: Publier un événement (DRAFT → PUBLISHED)
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Événement publié
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /api/v1/events/{id}/close:
+    patch:
+      tags: [Events]
+      summary: Fermer un événement (PUBLISHED → CLOSED)
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Événement fermé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/events/{id}/cancel:
+    patch:
+      tags: [Events]
+      summary: Annuler un événement (PUBLISHED → CANCELLED)
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Événement annulé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/events/{id}/tiers:
+    post:
+      tags: [Ticket tiers]
+      summary: Ajouter une catégorie de billet
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TicketTierRequest'
+      responses:
+        '201':
+          description: Catégorie de billet créée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketTierResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/categories:
+    get:
+      tags: [Categories]
+      summary: Lister les catégories
+      security: []
+      responses:
+        '200':
+          description: Liste des catégories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CategoryResponse'
+    post:
+      tags: [Categories]
+      summary: Créer une catégorie
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CategoryRequest'
+      responses:
+        '201':
+          description: Catégorie créée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/venues:
+    get:
+      tags: [Venues]
+      summary: Lister les lieux
+      security: []
+      responses:
+        '200':
+          description: Liste des lieux
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VenueResponse'
+    post:
+      tags: [Venues]
+      summary: Créer un lieu
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VenueRequest'
+      responses:
+        '201':
+          description: Lieu créé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VenueResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/v1/internal/events/{id}/tiers/{tierId}/reserve:
+    post:
+      tags: [Internal]
+      summary: Réserver de la capacité (appel Booking Service)
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/TierId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CapacityRequest'
+      responses:
+        '200':
+          description: Capacité réservée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapacityResponse'
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /api/v1/internal/events/{id}/tiers/{tierId}/release:
+    post:
+      tags: [Internal]
+      summary: Libérer de la capacité (appel Booking Service)
+      parameters:
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/TierId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CapacityRequest'
+      responses:
+        '200':
+          description: Capacité libérée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapacityResponse'
+        '404': { $ref: '#/components/responses/NotFound' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    EventId:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+    TierId:
+      name: tierId
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+
+  responses:
+    BadRequest:
+      description: Requête invalide
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Unauthorized:
+      description: Non authentifié
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: Accès refusé
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: Ressource introuvable
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Conflict:
+      description: Conflit
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Unprocessable:
+      description: Règle métier non respectée
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  schemas:
+    EventStatus:
+      type: string
+      enum: [DRAFT, PUBLISHED, CLOSED, CANCELLED]
+
+    TicketTierRequest:
+      type: object
+      required: [name, price, currency, totalCapacity]
+      properties:
+        name: { type: string, example: Standard }
+        price: { type: number, minimum: 0, example: 150.00 }
+        currency: { type: string, example: MAD }
+        totalCapacity: { type: integer, minimum: 1, example: 500 }
+
+    TicketTierResponse:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+        price: { type: number }
+        currency: { type: string }
+        totalCapacity: { type: integer }
+        availableCapacity: { type: integer }
+
+    CreateEventRequest:
+      type: object
+      required: [title, categoryId, venueId, startDate, endDate]
+      properties:
+        title: { type: string, example: Concert Jazz }
+        description: { type: string }
+        categoryId: { type: integer, format: int64 }
+        venueId: { type: integer, format: int64 }
+        startDate: { type: string, format: date-time }
+        endDate: { type: string, format: date-time }
+        imageUrl: { type: string }
+        tiers:
+          type: array
+          items: { $ref: '#/components/schemas/TicketTierRequest' }
+
+    UpdateEventRequest:
+      type: object
+      properties:
+        title: { type: string }
+        description: { type: string }
+        categoryId: { type: integer, format: int64 }
+        venueId: { type: integer, format: int64 }
+        startDate: { type: string, format: date-time }
+        endDate: { type: string, format: date-time }
+        imageUrl: { type: string }
+
+    EventResponse:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        title: { type: string }
+        description: { type: string }
+        category: { $ref: '#/components/schemas/CategoryResponse' }
+        venue: { $ref: '#/components/schemas/VenueResponse' }
+        startDate: { type: string, format: date-time }
+        endDate: { type: string, format: date-time }
+        status: { $ref: '#/components/schemas/EventStatus' }
+        imageUrl: { type: string }
+        tiers:
+          type: array
+          items: { $ref: '#/components/schemas/TicketTierResponse' }
+
+    EventSummaryResponse:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        title: { type: string }
+        city: { type: string }
+        startDate: { type: string, format: date-time }
+        minPrice: { type: number }
+        status: { $ref: '#/components/schemas/EventStatus' }
+
+    PageEventSummary:
+      type: object
+      properties:
+        content:
+          type: array
+          items: { $ref: '#/components/schemas/EventSummaryResponse' }
+        page: { type: integer }
+        size: { type: integer }
+        totalElements: { type: integer, format: int64 }
+        totalPages: { type: integer }
+
+    CategoryRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, example: Musique }
+        description: { type: string }
+
+    CategoryResponse:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+        description: { type: string }
+
+    VenueRequest:
+      type: object
+      required: [name, address, city]
+      properties:
+        name: { type: string }
+        address: { type: string }
+        city: { type: string }
+        capacity: { type: integer }
+
+    VenueResponse:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        name: { type: string }
+        address: { type: string }
+        city: { type: string }
+        capacity: { type: integer }
+
+
+    CapacityRequest:
+      type: object
+      required: [ bookingId, quantity ]
+      properties:
+        bookingId:
+          type: string
+          format: uuid
+          description: Identifiant unique de la réservation Booking
+        quantity:
+          type: integer
+          minimum: 1
+          example: 2
+
+    CapacityResponse:
+      type: object
+      properties:
+        tierId: { type: integer, format: int64 }
+        availableCapacity: { type: integer }
+
+    ErrorResponse:
+      type: object
+      properties:
+        code: { type: string, example: EVENT_NOT_FOUND }
+        message: { type: string }
+        timestamp: { type: string, format: date-time }
+        path: { type: string }
