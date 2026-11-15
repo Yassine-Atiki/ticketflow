@@ -6,3 +6,21 @@ services:
     container_name: customer-service
     ports:
       - "8081:8081"
+
+  mcp-tool-server:
+    build:
+      context: ..
+      dockerfile: services/mcp-tool-server/Dockerfile
+    container_name: mcp-tool-server
+    ports:
+      - "8090:8090"
+    environment:
+      SERVER_PORT: "8090"
+      # customer-service README documents port 8081. Its application.properties does not
+      # set server.port, so confirm the listening port before relying on this URL.
+      CUSTOMER_SERVICE_URL: http://customer-service:8081
+      EVENT_SERVICE_URL: http://event-service:8082
+      BOOKING_SERVICE_URL: http://booking-service:8083
+      PAYMENT_SERVICE_URL: http://payment-service:8084
+      TICKET_SERVICE_URL: http://ticket-service:8085
+      NOTIFICATION_SERVICE_URL: http://notification-service:8086
