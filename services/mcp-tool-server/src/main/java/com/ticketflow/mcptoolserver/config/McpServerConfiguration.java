@@ -24,11 +24,12 @@ import org.springframework.context.annotation.Configuration;
 public class McpServerConfiguration {
 
     static final String INSTRUCTIONS = """
-            TicketFlow MCP tool server. Tools delegate to platform microservices and do not apply booking, payment, inventory or notification business rules.
-            create_booking, cancel_booking, initiate_payment and resend_booking_confirmation stay unexecuted until userConfirmed is true after an explicit user agreement.
+            TicketFlow MCP tool server. Tools delegate to platform microservices and do not apply booking, payment or inventory rules.
+            create_booking, cancel_booking and initiate_payment stay unexecuted until userConfirmed is true after an explicit user agreement.
+            Booking and ticket tools identify the caller from the bearer token. They do not accept a customerId owner.
             A payment tool result never means the payment was captured.
-            Tools whose downstream OpenAPI contract is not confirmed return CONTRACT_NOT_CONFIRMED and do not send an HTTP call.
-            Customer profile reads use the published Customer Service path GET /api/customers/{id}.
+            Tools whose downstream implementation is not enabled return CONTRACT_NOT_CONFIRMED and do not send an HTTP call.
+            Customer profile reads use the implemented Customer Service path GET /api/customers/{id}.
             """;
 
     @Bean

@@ -13,7 +13,6 @@ public class DownstreamServicesProperties {
     private Service booking = new Service();
     private Service payment = new Service();
     private Service customer = new Service();
-    private Service notification = new Service();
 
     public Service service(String key) {
         return switch (key) {
@@ -22,7 +21,6 @@ public class DownstreamServicesProperties {
             case "booking" -> booking;
             case "payment" -> payment;
             case "customer" -> customer;
-            case "notification" -> notification;
             default -> throw new IllegalArgumentException("Unknown downstream service: " + key);
         };
     }
@@ -65,14 +63,6 @@ public class DownstreamServicesProperties {
 
     public void setCustomer(Service customer) {
         this.customer = customer;
-    }
-
-    public Service getNotification() {
-        return notification;
-    }
-
-    public void setNotification(Service notification) {
-        this.notification = notification;
     }
 
     public static final class Service {
