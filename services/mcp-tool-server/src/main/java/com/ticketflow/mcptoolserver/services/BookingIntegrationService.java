@@ -18,32 +18,30 @@ public class BookingIntegrationService {
 
     public Object create(ToolArguments arguments, CallerContext caller) {
         Map<String, Object> fields = new LinkedHashMap<>();
-        fields.put("eventId", arguments.requiredId("eventId"));
-        fields.put("customerId", arguments.requiredCustomerId("customerId"));
-        fields.put("quantity", arguments.requiredQuantity("quantity"));
-        String ticketType = arguments.optionalId("ticketType");
-        if (ticketType != null) {
-            fields.put("ticketType", ticketType);
-        }
-        String idempotencyKey = arguments.optionalIdempotencyKey();
+        fields.put("eventId", arguments.requiredUuid("eventId"));
+        fields.put("lines", arguments.requiredBookingLines());
+        String idempotencyKey = arguments.requiredIdempotencyKey();
         arguments.requireConfirmation("create_booking");
+        caller.requireBearer("Booking Service", "create");
         return bookings.create(fields, caller, idempotencyKey);
     }
 
     public Object status(ToolArguments arguments, CallerContext caller) {
-        return bookings.status(arguments.requiredId("bookingId"), caller);
+        String bookingId = arguments.requiredUuid("bookingId");
+        caller.requireBearer("Booking Service", "status");
+        return bookings.status(bookingId, caller);
     }
 
     public Object cancel(ToolArguments arguments, CallerContext caller) {
-        String bookingId = arguments.requiredId("bookingId");
+        String bookingId = arguments.requiredUuid("bookingId");
         Map<String, Object> fields = new LinkedHashMap<>();
-        fields.put("customerId", arguments.requiredCustomerId("customerId"));
-        String reason = arguments.optionalText("reason");
+        String reason = arguments.optionalReason();
         if (reason != null) {
             fields.put("reason", reason);
         }
         String idempotencyKey = arguments.optionalIdempotencyKey();
         arguments.requireConfirmation("cancel_booking");
+        caller.requireBearer("Booking Service", "cancel");
         return bookings.cancel(bookingId, fields, caller, idempotencyKey);
     }
 }

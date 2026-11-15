@@ -7,6 +7,20 @@ server:
 spring:
   application:
     name: mcp-tool-server
+  config:
+    import: "optional:configserver:http://localhost:8888"
+  cloud:
+    config:
+      label: main
+      fail-fast: false
+      request-connect-timeout: 1000
+      request-read-timeout: 1000
+
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false
 
 management:
   endpoints:
@@ -28,8 +42,8 @@ springdoc:
     path: /v3/api-docs
   swagger-ui:
     path: /swagger-ui.html
-    operations-sorter: alpha
-    tags-sorter: alpha
+    url: /openapi.yaml
+    disable-swagger-default-url: true
   ai:
     mcp:
       enabled: false
@@ -42,6 +56,7 @@ ticketflow:
     allowed-hosts:
       - "localhost:*"
       - "127.0.0.1:*"
+      - "mcp-tool-server:*"
     allowed-origins:
       - "http://localhost:*"
       - "http://127.0.0.1:*"
@@ -54,46 +69,38 @@ ticketflow:
       response-timeout: 5s
       idempotency-header: Idempotency-Key
       operations:
-        # Paths, methods and parameter names below are placeholders.
-        # contract-confirmed stays false until Event Service publishes its OpenAPI contract.
+        # Paths match the published Event Service contract. The endpoint is not implemented yet.
         search:
           method: GET
-          path: /api/events
+          path: /api/v1/events
           contract-confirmed: false
           query:
-            keyword: keyword
-            category: category
-            date: date
-            location: location
+            q: q
+            categoryId: categoryId
+            city: city
+            dateFrom: dateFrom
+            dateTo: dateTo
+            page: page
+            size: size
+            sort: sort
         details:
           method: GET
-          path: /api/events/{eventId}
+          path: /api/v1/events/{id}
           contract-confirmed: false
-        upcoming:
-          method: GET
-          path: /api/events/upcoming
-          contract-confirmed: false
-          query:
-            limit: limit
-            category: category
-            location: location
     ticket:
       base-url: ${TICKET_SERVICE_URL:}
       connect-timeout: 2s
       response-timeout: 5s
       idempotency-header: Idempotency-Key
       operations:
-        availability:
-          method: GET
-          path: /api/events/{eventId}/tickets/availability
-          contract-confirmed: false
-          query:
-            ticketType: ticketType
-            quantity: quantity
         mine:
           method: GET
-          path: /api/customers/{customerId}/tickets
+          path: /api/v1/me/tickets
           contract-confirmed: false
+          query:
+            page: page
+            size: size
+            status: status
     booking:
       base-url: ${BOOKING_SERVICE_URL:}
       connect-timeout: 2s
@@ -102,23 +109,20 @@ ticketflow:
       operations:
         create:
           method: POST
-          path: /api/bookings
+          path: /api/v1/bookings
           contract-confirmed: false
           body:
             eventId: eventId
-            customerId: customerId
-            quantity: quantity
-            ticketType: ticketType
+            lines: lines
         status:
           method: GET
-          path: /api/bookings/{bookingId}
+          path: /api/v1/bookings/{id}
           contract-confirmed: false
         cancel:
           method: POST
-          path: /api/bookings/{bookingId}/cancel
+          path: /api/v1/bookings/{id}/cancel
           contract-confirmed: false
           body:
-            customerId: customerId
             reason: reason
     payment:
       base-url: ${PAYMENT_SERVICE_URL:}
@@ -132,12 +136,13 @@ ticketflow:
           contract-confirmed: false
           body:
             bookingId: bookingId
+            provider: provider
         status:
           method: GET
-          path: /api/payments/{paymentId}
+          path: /api/payments/{id}
           contract-confirmed: false
     customer:
-      # customer-service is the only published API. Its README documents port 8081.
+      # Implemented Customer Service API. Its README documents port 8081.
       # application.properties in that module does not set server.port (Boot default is 8080).
       base-url: ${CUSTOMER_SERVICE_URL:http://localhost:8081}
       connect-timeout: 2s
@@ -148,23 +153,3 @@ ticketflow:
           method: GET
           path: /api/customers/{customerId}
           contract-confirmed: true
-    notification:
-      base-url: ${NOTIFICATION_SERVICE_URL:}
-      connect-timeout: 2s
-      response-timeout: 5s
-      idempotency-header: Idempotency-Key
-      operations:
-        history:
-          method: GET
-          path: /api/notifications
-          contract-confirmed: false
-          query:
-            customerId: customerId
-            bookingId: bookingId
-        resend:
-          method: POST
-          path: /api/notifications/booking-confirmation
-          contract-confirmed: false
-          body:
-            bookingId: bookingId
-            customerId: customerId

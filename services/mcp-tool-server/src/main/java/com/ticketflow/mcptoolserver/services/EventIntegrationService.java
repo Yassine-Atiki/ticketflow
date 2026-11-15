@@ -18,26 +18,28 @@ public class EventIntegrationService {
 
     public Object search(ToolArguments arguments, CallerContext caller) {
         Map<String, Object> filters = new LinkedHashMap<>();
-        putIfPresent(filters, "keyword", arguments.optionalText("keyword"));
-        putIfPresent(filters, "category", arguments.optionalText("category"));
-        putIfPresent(filters, "date", arguments.optionalDate("date"));
-        putIfPresent(filters, "location", arguments.optionalText("location"));
+        putIfPresent(filters, "q", arguments.optionalText("q"));
+        Integer categoryId = arguments.optionalInt("categoryId", 1, Integer.MAX_VALUE);
+        if (categoryId != null) {
+            filters.put("categoryId", categoryId);
+        }
+        putIfPresent(filters, "city", arguments.optionalText("city"));
+        putIfPresent(filters, "dateFrom", arguments.optionalDate("dateFrom"));
+        putIfPresent(filters, "dateTo", arguments.optionalDate("dateTo"));
+        Integer page = arguments.optionalInt("page", 0, 10_000);
+        if (page != null) {
+            filters.put("page", page);
+        }
+        Integer size = arguments.optionalInt("size", 1, 100);
+        if (size != null) {
+            filters.put("size", size);
+        }
+        putIfPresent(filters, "sort", arguments.optionalText("sort"));
         return events.search(filters, caller);
     }
 
     public Object details(ToolArguments arguments, CallerContext caller) {
         return events.details(arguments.requiredId("eventId"), caller);
-    }
-
-    public Object upcoming(ToolArguments arguments, CallerContext caller) {
-        Map<String, Object> filters = new LinkedHashMap<>();
-        Integer limit = arguments.optionalLimit("limit");
-        if (limit != null) {
-            filters.put("limit", limit);
-        }
-        putIfPresent(filters, "category", arguments.optionalText("category"));
-        putIfPresent(filters, "location", arguments.optionalText("location"));
-        return events.upcoming(filters, caller);
     }
 
     private static void putIfPresent(Map<String, Object> target, String name, String value) {

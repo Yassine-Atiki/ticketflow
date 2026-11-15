@@ -28,6 +28,14 @@ public final class ToolSchemas {
         return Map.of("type", "string", "description", description, "pattern", pattern);
     }
 
+    public static Map<String, Object> boundedString(String description, int minLength, int maxLength) {
+        return Map.of(
+                "type", "string",
+                "description", description,
+                "minLength", minLength,
+                "maxLength", maxLength);
+    }
+
     public static Map<String, Object> integerProperty(String description, int minimum, int maximum) {
         return Map.of(
                 "type", "integer",
@@ -38,6 +46,10 @@ public final class ToolSchemas {
 
     public static Map<String, Object> booleanProperty(String description) {
         return Map.of("type", "boolean", "description", description);
+    }
+
+    public static Map<String, Object> arrayProperty(String description, Map<String, Object> items) {
+        return Map.of("type", "array", "description", description, "minItems", 1, "items", items);
     }
 
     public static Map<String, Object> properties(Object... keysAndValues) {

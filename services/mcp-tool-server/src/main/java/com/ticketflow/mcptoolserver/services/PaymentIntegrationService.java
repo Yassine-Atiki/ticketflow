@@ -3,6 +3,7 @@ package com.ticketflow.mcptoolserver.services;
 import com.ticketflow.mcptoolserver.clients.PaymentServiceClient;
 import com.ticketflow.mcptoolserver.security.CallerContext;
 import com.ticketflow.mcptoolserver.tools.ToolArguments;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.stereotype.Service;
 
@@ -16,13 +17,18 @@ public class PaymentIntegrationService {
     }
 
     public Object initiate(ToolArguments arguments, CallerContext caller) {
-        String bookingId = arguments.requiredId("bookingId");
-        String idempotencyKey = arguments.optionalIdempotencyKey();
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("bookingId", arguments.requiredUuid("bookingId"));
+        String provider = arguments.optionalText("provider");
+        if (provider != null) {
+            fields.put("provider", provider);
+        }
+        String idempotencyKey = arguments.requiredPaymentIdempotencyKey();
         arguments.requireConfirmation("initiate_payment");
-        return payments.initiate(Map.of("bookingId", bookingId), caller, idempotencyKey);
+        return payments.initiate(fields, caller, idempotencyKey);
     }
 
     public Object status(ToolArguments arguments, CallerContext caller) {
-        return payments.status(arguments.requiredId("paymentId"), caller);
+        return payments.status(arguments.requiredUuid("paymentId"), caller);
     }
 }

@@ -1,7 +1,5 @@
 package com.ticketflow.mcptoolserver.tools;
 
-import static com.ticketflow.mcptoolserver.tools.ToolDefinitions.CUSTOMER_ID_PATTERN;
-import static com.ticketflow.mcptoolserver.tools.ToolDefinitions.ID_PATTERN;
 import static com.ticketflow.mcptoolserver.tools.ToolSchemas.integerProperty;
 import static com.ticketflow.mcptoolserver.tools.ToolSchemas.objectSchema;
 import static com.ticketflow.mcptoolserver.tools.ToolSchemas.properties;
@@ -18,31 +16,18 @@ import org.springframework.context.annotation.Configuration;
 public class TicketToolConfiguration {
 
     @Bean
-    McpTool checkTicketAvailabilityTool(TicketIntegrationService tickets) {
-        return tool(tickets::availability, ToolDefinitions.define(
-                "check_ticket_availability",
-                "Check ticket availability for an event by delegating to Ticket Service. "
-                        + "The Ticket Service HTTP contract is not confirmed, so this tool returns CONTRACT_NOT_CONFIRMED until that contract is configured.",
-                objectSchema(properties(
-                        "eventId", stringProperty("Event identifier.", ID_PATTERN),
-                        "ticketType", stringProperty("Optional ticket type. Ticket types are not confirmed yet.", ID_PATTERN),
-                        "quantity", integerProperty("Optional quantity to check. Ticket Service enforces the real inventory rule.", 1, 50)),
-                        List.of("eventId")),
-                true, false, true), 40);
-    }
-
-    @Bean
     McpTool getMyTicketsTool(TicketIntegrationService tickets) {
         return tool(tickets::mine, ToolDefinitions.define(
                 "get_my_tickets",
-                "Retrieve tickets for a customer. Authenticated subject extraction is not available yet, so customerId is required. "
-                        + "The Ticket Service HTTP contract is not confirmed, so this tool returns CONTRACT_NOT_CONFIRMED until that contract is configured.",
+                "List tickets for the authenticated caller through GET /api/v1/me/tickets. "
+                        + "The owner is the bearer token subject. This tool does not accept a customer id. "
+                        + "Ticket Service has published the contract and has not implemented the endpoint, so the call stays disabled.",
                 objectSchema(properties(
-                        "customerId", stringProperty(
-                                "Numeric customer id published by Customer Service. A bearer token is forwarded when the MCP client sends one, and it is not validated here.",
-                                CUSTOMER_ID_PATTERN)),
-                        List.of("customerId")),
-                true, false, true), 50);
+                        "page", integerProperty("Zero-based page index.", 0, 10_000),
+                        "size", integerProperty("Page size.", 1, 100),
+                        "status", stringProperty("ISSUED or CANCELLED.")),
+                        List.of()),
+                true, false, true), 30);
     }
 
     private static McpTool tool(Handler handler, McpSchema.Tool definition, int order) {

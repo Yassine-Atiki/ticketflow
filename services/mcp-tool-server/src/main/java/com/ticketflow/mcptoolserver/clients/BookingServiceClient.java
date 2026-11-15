@@ -16,7 +16,7 @@ public class BookingServiceClient extends HttpServiceClient {
     }
 
     public Object status(String bookingId, CallerContext caller) {
-        return get("status", Map.of("bookingId", bookingId), Map.of(), caller);
+        return get("status", Map.of("id", bookingId), Map.of(), caller);
     }
 
     public Object cancel(
@@ -24,6 +24,6 @@ public class BookingServiceClient extends HttpServiceClient {
             Map<String, Object> fields,
             CallerContext caller,
             String idempotencyKey) {
-        return send("cancel", Map.of("bookingId", bookingId), fields, caller, idempotencyKey);
+        return send("cancel", Map.of("id", bookingId), fields, caller, idempotencyKey);
     }
 }

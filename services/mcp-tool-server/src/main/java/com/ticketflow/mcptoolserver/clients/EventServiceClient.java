@@ -16,10 +16,6 @@ public class EventServiceClient extends HttpServiceClient {
     }
 
     public Object details(String eventId, CallerContext caller) {
-        return get("details", Map.of("eventId", eventId), Map.of(), caller);
-    }
-
-    public Object upcoming(Map<String, Object> filters, CallerContext caller) {
-        return get("upcoming", Map.of(), filters, caller);
+        return get("details", Map.of("id", eventId), Map.of(), caller);
     }
 }

@@ -27,8 +27,8 @@ public record ToolFailure(
                 "CONTRACT_NOT_CONFIRMED",
                 service,
                 operation,
-                service + " has no confirmed HTTP contract for " + operation
-                        + ". The call was not sent. Publish the OpenAPI contract, point the configured path at that endpoint, then set contract-confirmed to true.",
+                service + " operation " + operation
+                        + " is disabled. The call was not sent. Enable contract-confirmed only after that service implements the configured path.",
                 null);
     }
 
@@ -52,6 +52,15 @@ public record ToolFailure(
                 operation,
                 service + " rejected the caller credentials (HTTP " + httpStatus + ").",
                 httpStatus);
+    }
+
+    public static ToolFailure callerAuthenticationRequired(String service, String operation) {
+        return new ToolFailure(
+                "AUTHENTICATION_FAILED",
+                service,
+                operation,
+                service + " identifies the caller from the bearer token. No Authorization header was present, so the call was not sent.",
+                null);
     }
 
     public static ToolFailure timeout(String service, String operation) {

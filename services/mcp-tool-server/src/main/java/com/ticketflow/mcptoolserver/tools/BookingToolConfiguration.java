@@ -1,7 +1,8 @@
 package com.ticketflow.mcptoolserver.tools;
 
-import static com.ticketflow.mcptoolserver.tools.ToolDefinitions.CUSTOMER_ID_PATTERN;
-import static com.ticketflow.mcptoolserver.tools.ToolDefinitions.ID_PATTERN;
+import static com.ticketflow.mcptoolserver.tools.ToolDefinitions.IDEMPOTENCY_PATTERN;
+import static com.ticketflow.mcptoolserver.tools.ToolDefinitions.UUID_PATTERN;
+import static com.ticketflow.mcptoolserver.tools.ToolSchemas.arrayProperty;
 import static com.ticketflow.mcptoolserver.tools.ToolSchemas.booleanProperty;
 import static com.ticketflow.mcptoolserver.tools.ToolSchemas.integerProperty;
 import static com.ticketflow.mcptoolserver.tools.ToolSchemas.objectSchema;
@@ -20,54 +21,60 @@ public class BookingToolConfiguration {
 
     private static final String CONFIRMATION =
             "Set userConfirmed to true only after the user explicitly agrees to this change in the conversation.";
+    private static final String DISABLED =
+            " Booking Service has published this path and has not implemented it, so a confirmed call stays disabled.";
 
     @Bean
     McpTool createBookingTool(BookingIntegrationService bookings) {
         return tool(bookings::create, ToolDefinitions.define(
                 "create_booking",
-                "Ask Booking Service to create a booking for one or more tickets. "
+                "Ask Booking Service to create a booking with POST /api/v1/bookings. "
+                        + "The body is eventId plus lines of ticketTierId and quantity. "
+                        + "The caller is the bearer token subject, not a customerId argument. "
+                        + "Idempotency-Key is required by the booking contract. "
                         + CONFIRMATION
-                        + " Payment credentials are not accepted. An idempotencyKey is forwarded as a header when present; "
-                        + "whether Booking Service deduplicates retries is not confirmed. "
-                        + "The Booking Service HTTP contract is not confirmed, so a confirmed call returns CONTRACT_NOT_CONFIRMED until that contract is configured.",
+                        + DISABLED,
                 objectSchema(properties(
-                        "eventId", stringProperty("Event identifier.", ID_PATTERN),
-                        "customerId", stringProperty("Numeric customer id published by Customer Service.", CUSTOMER_ID_PATTERN),
-                        "quantity", integerProperty("Number of tickets requested. Booking Service enforces inventory.", 1, 50),
-                        "ticketType", stringProperty("Optional ticket type. Ticket types are not confirmed yet.", ID_PATTERN),
+                        "eventId", stringProperty("Event identifier. The booking contract requires a UUID.", UUID_PATTERN),
+                        "lines", arrayProperty(
+                                "Ticket tiers to reserve. Each line quantity is 1 to 10.",
+                                objectSchema(properties(
+                                        "ticketTierId", stringProperty("Ticket tier identifier. The booking contract requires a UUID.", UUID_PATTERN),
+                                        "quantity", integerProperty("Quantity for this tier. The booking contract caps a line at 10.", 1, 10)),
+                                        List.of("ticketTierId", "quantity"))),
                         "userConfirmed", booleanProperty(CONFIRMATION),
-                        "idempotencyKey", stringProperty("Optional caller-generated idempotency key.", ID_PATTERN)),
-                        List.of("eventId", "customerId", "quantity", "userConfirmed")),
-                false, false, false), 60);
+                        "idempotencyKey", stringProperty("Required Idempotency-Key value.", IDEMPOTENCY_PATTERN)),
+                        List.of("eventId", "lines", "userConfirmed", "idempotencyKey")),
+                false, false, false), 40);
     }
 
     @Bean
     McpTool getBookingStatusTool(BookingIntegrationService bookings) {
         return tool(bookings::status, ToolDefinitions.define(
                 "get_booking_status",
-                "Retrieve the status of a booking from Booking Service. "
-                        + "The Booking Service HTTP contract is not confirmed, so this tool returns CONTRACT_NOT_CONFIRMED until that contract is configured.",
+                "Retrieve one booking with GET /api/v1/bookings/{id}. The booking must belong to the bearer token subject."
+                        + DISABLED,
                 objectSchema(properties(
-                        "bookingId", stringProperty("Booking identifier.", ID_PATTERN)),
+                        "bookingId", stringProperty("Booking identifier. The booking contract requires a UUID.", UUID_PATTERN)),
                         List.of("bookingId")),
-                true, false, true), 70);
+                true, false, true), 50);
     }
 
     @Bean
     McpTool cancelBookingTool(BookingIntegrationService bookings) {
         return tool(bookings::cancel, ToolDefinitions.define(
                 "cancel_booking",
-                "Ask Booking Service to cancel a booking. "
+                "Ask Booking Service to cancel a booking with POST /api/v1/bookings/{id}/cancel. "
+                        + "The body may contain a reason. The caller is the bearer token subject. "
                         + CONFIRMATION
-                        + " The Booking Service HTTP contract is not confirmed, so a confirmed call returns CONTRACT_NOT_CONFIRMED until that contract is configured.",
+                        + DISABLED,
                 objectSchema(properties(
-                        "bookingId", stringProperty("Booking identifier.", ID_PATTERN),
-                        "customerId", stringProperty("Numeric customer id published by Customer Service.", CUSTOMER_ID_PATTERN),
-                        "reason", stringProperty("Optional cancellation reason."),
+                        "bookingId", stringProperty("Booking identifier. The booking contract requires a UUID.", UUID_PATTERN),
+                        "reason", stringProperty("Optional cancellation reason, at most 255 characters."),
                         "userConfirmed", booleanProperty(CONFIRMATION),
-                        "idempotencyKey", stringProperty("Optional caller-generated idempotency key.", ID_PATTERN)),
-                        List.of("bookingId", "customerId", "userConfirmed")),
-                false, true, false), 80);
+                        "idempotencyKey", stringProperty("Optional idempotency key. The cancel contract does not require one.", IDEMPOTENCY_PATTERN)),
+                        List.of("bookingId", "userConfirmed")),
+                false, true, false), 60);
     }
 
     private static McpTool tool(Handler handler, McpSchema.Tool definition, int order) {

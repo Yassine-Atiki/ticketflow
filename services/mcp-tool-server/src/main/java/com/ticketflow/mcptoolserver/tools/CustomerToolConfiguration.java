@@ -28,7 +28,7 @@ public class CustomerToolConfiguration {
                                 "Numeric customer id published by Customer Service.",
                                 CUSTOMER_ID_PATTERN)),
                         List.of("customerId")),
-                true, false, true), 110) {
+                true, false, true), 90) {
             @Override
             protected McpSchema.CallToolResult execute(CallerContext caller, ToolArguments arguments) {
                 return ToolResults.success(

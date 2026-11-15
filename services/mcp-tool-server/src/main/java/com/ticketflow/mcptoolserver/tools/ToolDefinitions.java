@@ -6,6 +6,9 @@ import java.util.Map;
 public final class ToolDefinitions {
 
     public static final String ID_PATTERN = "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$";
+    public static final String UUID_PATTERN =
+            "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$";
+    public static final String IDEMPOTENCY_PATTERN = "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$";
     public static final String CUSTOMER_ID_PATTERN = "^[1-9][0-9]{0,18}$";
     public static final String DATE_PATTERN = "^[0-9]{4}-[0-9]{2}-[0-9]{2}$";
 

@@ -17,17 +17,24 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class EventToolConfiguration {
 
+    private static final String DISABLED =
+            " Event Service has published GET /api/v1/events, but the endpoint is not implemented yet, so this tool stays disabled.";
+
     @Bean
     McpTool searchEventsTool(EventIntegrationService events) {
         return tool(events::search, ToolDefinitions.define(
                 "search_events",
-                "Search events by keyword, category, date and location. Delegates to Event Service. "
-                        + "The Event Service HTTP contract is not confirmed, so this tool returns CONTRACT_NOT_CONFIRMED until that contract is configured.",
+                "Search published events. Query names match Event Service: q, categoryId, city, dateFrom, dateTo, page, size and sort."
+                        + DISABLED,
                 objectSchema(properties(
-                        "keyword", stringProperty("Free-text keyword to match against the event catalog."),
-                        "category", stringProperty("Event category. The allowed values are defined by Event Service and are not confirmed yet."),
-                        "date", stringProperty("Calendar date in YYYY-MM-DD form.", DATE_PATTERN),
-                        "location", stringProperty("Location text. The location model is not confirmed yet.")),
+                        "q", stringProperty("Keyword matched by Event Service query parameter q."),
+                        "categoryId", integerProperty("Category id.", 1, Integer.MAX_VALUE),
+                        "city", stringProperty("City filter."),
+                        "dateFrom", stringProperty("Inclusive start date in YYYY-MM-DD form.", DATE_PATTERN),
+                        "dateTo", stringProperty("Inclusive end date in YYYY-MM-DD form.", DATE_PATTERN),
+                        "page", integerProperty("Zero-based page index.", 0, 10_000),
+                        "size", integerProperty("Page size.", 1, 100),
+                        "sort", stringProperty("Sort expression, for example startDate,asc.")),
                         List.of()),
                 true, false, true), 10);
     }
@@ -36,26 +43,12 @@ public class EventToolConfiguration {
     McpTool getEventDetailsTool(EventIntegrationService events) {
         return tool(events::details, ToolDefinitions.define(
                 "get_event_details",
-                "Retrieve the Event Service representation of one event. "
-                        + "The Event Service HTTP contract is not confirmed, so this tool returns CONTRACT_NOT_CONFIRMED until that contract is configured.",
+                "Retrieve one event from GET /api/v1/events/{id}."
+                        + DISABLED,
                 objectSchema(properties(
                         "eventId", stringProperty("Event identifier.", ID_PATTERN)),
                         List.of("eventId")),
                 true, false, true), 20);
-    }
-
-    @Bean
-    McpTool getUpcomingEventsTool(EventIntegrationService events) {
-        return tool(events::upcoming, ToolDefinitions.define(
-                "get_upcoming_events",
-                "Retrieve upcoming events from Event Service. "
-                        + "The Event Service HTTP contract is not confirmed, so this tool returns CONTRACT_NOT_CONFIRMED until that contract is configured.",
-                objectSchema(properties(
-                        "limit", integerProperty("Maximum number of events to return.", 1, 100),
-                        "category", stringProperty("Optional category filter. Allowed values are not confirmed yet."),
-                        "location", stringProperty("Optional location filter. The location model is not confirmed yet.")),
-                        List.of()),
-                true, false, true), 30);
     }
 
     private static McpTool tool(Handler handler, McpSchema.Tool definition, int order) {

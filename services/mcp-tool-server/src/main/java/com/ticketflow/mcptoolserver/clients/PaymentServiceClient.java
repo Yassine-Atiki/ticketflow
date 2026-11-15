@@ -16,6 +16,6 @@ public class PaymentServiceClient extends HttpServiceClient {
     }
 
     public Object status(String paymentId, CallerContext caller) {
-        return get("status", Map.of("paymentId", paymentId), Map.of(), caller);
+        return get("status", Map.of("id", paymentId), Map.of(), caller);
     }
 }

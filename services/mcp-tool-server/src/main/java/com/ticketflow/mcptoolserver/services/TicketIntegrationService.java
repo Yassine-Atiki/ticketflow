@@ -16,20 +16,21 @@ public class TicketIntegrationService {
         this.tickets = tickets;
     }
 
-    public Object availability(ToolArguments arguments, CallerContext caller) {
-        Map<String, Object> filters = new LinkedHashMap<>();
-        String ticketType = arguments.optionalId("ticketType");
-        if (ticketType != null) {
-            filters.put("ticketType", ticketType);
-        }
-        Integer quantity = arguments.optionalQuantity("quantity");
-        if (quantity != null) {
-            filters.put("quantity", quantity);
-        }
-        return tickets.availability(arguments.requiredId("eventId"), filters, caller);
-    }
-
     public Object mine(ToolArguments arguments, CallerContext caller) {
-        return tickets.mine(arguments.requiredCustomerId("customerId"), caller);
+        Map<String, Object> filters = new LinkedHashMap<>();
+        Integer page = arguments.optionalInt("page", 0, 10_000);
+        if (page != null) {
+            filters.put("page", page);
+        }
+        Integer size = arguments.optionalInt("size", 1, 100);
+        if (size != null) {
+            filters.put("size", size);
+        }
+        String status = arguments.optionalTicketStatus();
+        if (status != null) {
+            filters.put("status", status);
+        }
+        caller.requireBearer("Ticket Service", "mine");
+        return tickets.mine(filters, caller);
     }
 }

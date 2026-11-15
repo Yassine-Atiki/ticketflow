@@ -226,6 +226,17 @@ public class DownstreamHttp implements ServiceInvoker {
             if (title instanceof String text && !text.isBlank()) {
                 return serviceName + " returned HTTP " + status + ": " + truncate(text);
             }
+            String serviceMessage = textValue(body.get("message"));
+            String serviceCode = textValue(body.get("code"));
+            if (serviceMessage != null && serviceCode != null) {
+                return serviceName + " returned HTTP " + status + ": " + truncate(serviceCode + ": " + serviceMessage);
+            }
+            if (serviceMessage != null) {
+                return serviceName + " returned HTTP " + status + ": " + truncate(serviceMessage);
+            }
+            if (serviceCode != null) {
+                return serviceName + " returned HTTP " + status + ": " + truncate(serviceCode);
+            }
         } catch (IOException ignored) {
             return serviceName + " returned HTTP " + status + ".";
         }
@@ -356,6 +367,13 @@ public class DownstreamHttp implements ServiceInvoker {
         return current;
     }
 
+    private static String textValue(Object value) {
+        if (value instanceof String text && !text.isBlank()) {
+            return text;
+        }
+        return null;
+    }
+
     private static String truncate(String value) {
         String compact = value.replaceAll("\\s+", " ").trim();
         return compact.length() <= 300 ? compact : compact.substring(0, 300);
@@ -368,7 +386,6 @@ public class DownstreamHttp implements ServiceInvoker {
             case "booking" -> "Booking Service";
             case "payment" -> "Payment Service";
             case "customer" -> "Customer Service";
-            case "notification" -> "Notification Service";
             default -> serviceKey;
         };
     }
