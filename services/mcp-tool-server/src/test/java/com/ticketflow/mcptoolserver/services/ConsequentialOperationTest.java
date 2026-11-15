@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.ticketflow.mcptoolserver.clients.BookingServiceClient;
+import com.ticketflow.mcptoolserver.clients.CustomerServiceClient;
 import com.ticketflow.mcptoolserver.clients.PaymentServiceClient;
 import com.ticketflow.mcptoolserver.clients.ServiceInvoker;
 import com.ticketflow.mcptoolserver.exceptions.ToolFailureException;
@@ -89,6 +90,22 @@ class ConsequentialOperationTest {
                 .isInstanceOf(ToolFailureException.class)
                 .extracting(ex -> ((ToolFailureException) ex).failure().code())
                 .isEqualTo("INVALID_ARGUMENTS");
+        assertThat(invoker.calls).isEmpty();
+    }
+
+    @Test
+    void updatePreferencesDoesNotCallTheServiceWithoutConfirmation() {
+        RecordingInvoker invoker = new RecordingInvoker();
+        CustomerIntegrationService customers = new CustomerIntegrationService(new CustomerServiceClient(invoker));
+
+        assertThatThrownBy(() -> customers.preferencesPut(new ToolArguments(Map.of(
+                "customerId", "42",
+                "language", "fr",
+                "notificationChannel", "EMAIL",
+                "userConfirmed", false)), CallerContext.anonymous()))
+                .isInstanceOf(ToolFailureException.class)
+                .extracting(ex -> ((ToolFailureException) ex).failure().code())
+                .isEqualTo("CONFIRMATION_REQUIRED");
         assertThat(invoker.calls).isEmpty();
     }
 

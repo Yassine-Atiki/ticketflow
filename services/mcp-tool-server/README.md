@@ -104,7 +104,7 @@ The MCP endpoint itself has Host and Origin checks and no authentication layer. 
 
 ## Registered tools
 
-Consequential tools (`create_booking`, `cancel_booking`, `initiate_payment`) require `userConfirmed: true`. The assistant must set that flag only after the user has explicitly agreed. `false` or a missing confirmation returns `CONFIRMATION_REQUIRED` with `isError: true`, and no downstream call is made.
+Consequential tools (`create_booking`, `cancel_booking`, `initiate_payment`, `update_customer_preferences`) require `userConfirmed: true`. The assistant must set that flag only after the user has explicitly agreed. `false` or a missing confirmation returns `CONFIRMATION_REQUIRED` with `isError: true`, and no downstream call is made.
 
 `initiate_payment` accepts a booking id. It rejects card numbers, CVV, PAN and an amount. Payment Service decides the amount from the booking. A tool result of `OK` means the HTTP call returned a JSON body. It does not mean the payment was captured. Read `data` for the status Payment Service returned.
 
@@ -117,12 +117,17 @@ Booking `eventId`, `ticketTierId` and `bookingId`, and payment `bookingId` and `
 | `search_events` | | `q`, `categoryId`, `city`, `dateFrom`, `dateTo`, `page`, `size`, `sort` | Disabled. Contract: `GET /api/v1/events` |
 | `get_event_details` | `eventId` | | Disabled. Contract: `GET /api/v1/events/{id}` |
 | `get_my_tickets` | bearer token | `page`, `size`, `status` | Disabled. Contract: `GET /api/v1/me/tickets` |
+| `get_my_ticket` | `ticketId`, bearer token | | Disabled. Contract: `GET /api/v1/me/tickets/{ticketId}` (`controlCode` redacted) |
 | `create_booking` | `eventId`, `lines`, `userConfirmed`, `idempotencyKey`, bearer token | | Disabled. Contract: `POST /api/v1/bookings` |
+| `list_my_bookings` | bearer token | `status`, `page`, `size` | Disabled. Contract: `GET /api/v1/me/bookings` |
 | `get_booking_status` | `bookingId`, bearer token | | Disabled. Contract: `GET /api/v1/bookings/{id}` |
 | `cancel_booking` | `bookingId`, `userConfirmed`, bearer token | `reason`, `idempotencyKey` | Disabled. Contract: `POST /api/v1/bookings/{id}/cancel` |
 | `initiate_payment` | `bookingId`, `userConfirmed`, `idempotencyKey` | `provider` | Disabled. Contract: `POST /api/payments` |
 | `get_payment_status` | `paymentId` | | Disabled. Contract: `GET /api/payments/{id}` |
+| `get_payments_by_booking` | `bookingId` | | Disabled. Contract: `GET /api/payments/booking/{bookingId}` |
 | `get_customer_profile` | `customerId` | | Enabled: `GET /api/customers/{customerId}` |
+| `get_customer_preferences` | `customerId` | | Disabled until Customer #7. Contract: `GET /api/customers/{id}/preferences` |
+| `update_customer_preferences` | `customerId`, `language`, `notificationChannel`, `userConfirmed` | `marketingOptIn` | Disabled until Customer #7. Contract: `PUT /api/customers/{id}/preferences` |
 
 Every input schema sets `additionalProperties` to `false`.
 
@@ -212,7 +217,7 @@ Result (`isError` true). Booking Service is not called:
 
 Failed calls set MCP `isError` to true. They are not rewritten as `status: OK`.
 
-Response objects are scanned for payment-credential field names (`cardNumber`, `cvv`, `cvc`, `pan`, tokens, passwords, secrets). Matching values are replaced with `[redacted]` before they reach the assistant. Profile fields returned by Customer Service, including email and phone, are left intact because that is the published profile contract.
+Response objects are scanned for payment-credential field names (`cardNumber`, `cvv`, `cvc`, `pan`, tokens, passwords, secrets) and ticket presentation secrets (`controlCode`). Matching values are replaced with `[redacted]` before they reach the assistant. Profile fields returned by Customer Service, including email and phone, are left intact because that is the published profile contract.
 
 ## Connecting the AI Assistant
 
@@ -227,10 +232,26 @@ Use Streamable HTTP. The server name is `ticketflow-mcp` and the instructions on
 The assistant should:
 
 1. Call `tools/list` and treat tool descriptions as the source of which calls change data.
-2. Ask the user before `create_booking`, `cancel_booking` and `initiate_payment`, then retry with `userConfirmed: true`.
+2. Ask the user before `create_booking`, `cancel_booking`, `initiate_payment` and `update_customer_preferences`, then retry with `userConfirmed: true`.
 3. Show `CONFIRMATION_REQUIRED`, `CONTRACT_NOT_CONFIRMED` and downstream errors to the user instead of assuming the action happened.
 4. Read payment status from `get_payment_status` after `initiate_payment`. Do not treat the initiate call as a captured payment.
 5. Send the caller's `Authorization` header on the MCP request when a token exists. This server forwards it and does not inspect it.
+
+## Coming next
+
+| When | MCP action |
+|---|---|
+| Customer #7 merges | Set preferences ops `contract-confirmed: true`; run against real Customer Service |
+| Event controllers land | Enable `search_events` / `get_event_details`; tighten `eventId` to integer if Event keeps int64 |
+| Booking controllers land | Enable create/status/cancel/`list_my_bookings` |
+| Ticket controllers land | Enable `get_my_tickets` / `get_my_ticket` |
+| Payment controllers land | Enable initiate/status/`get_payments_by_booking` |
+| Team ID decision | Align Event vs Booking UUID/Long across tools |
+| Keycloak | Validate JWT; stop requiring caller-supplied `customerId` where the token subject should own the resource |
+| Compose | Add event/booking/ticket/payment services; point MCP env URLs at them |
+| AI Assistant | Point its MCP client at `http://mcp-tool-server:8090/mcp` |
+
+Still out of scope unless product asks: notification tools, payment simulate/webhooks, ticket verify, event admin CRUD.
 
 ## What still needs a service team
 
@@ -239,6 +260,7 @@ These items are intentionally not invented:
 | Topic | State |
 |---|---|
 | Event, ticket, booking and payment controllers | Contracts are mapped and `contract-confirmed` is false until the controllers exist |
+| Customer preferences | Mapped with `contract-confirmed: false` until Customer PR #7 lands |
 | Notification tools | Removed. No notification service or contract exists |
 | JWT signature, issuer and audience | Not validated. Booking and ticket calls require a Bearer header and forward it |
 | Payment capture | Not interpreted. No card data is accepted |
@@ -252,7 +274,7 @@ When a contract arrives, update that operation's `method`, `path`, `query` and `
 
 `ConsequentialOperationTest` checks that booking and payment methods do not call their client without confirmation, and that payment initiation forwards only `bookingId`.
 
-`McpServerStartupTest` starts the server, lists the nine tools over Streamable HTTP, and checks the confirmation gate, the contract gate, and the Compose host name.
+`McpServerStartupTest` starts the server, lists the fourteen tools over Streamable HTTP, and checks the confirmation gate, the contract gate, and the Compose host name.
 
 `PublishedContractAlignmentTest` checks the configured paths and bodies against the published team contracts and checks that unimplemented operations stay disabled.
 

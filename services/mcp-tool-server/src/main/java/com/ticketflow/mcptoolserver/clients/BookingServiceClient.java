@@ -26,4 +26,8 @@ public class BookingServiceClient extends HttpServiceClient {
             String idempotencyKey) {
         return send("cancel", Map.of("id", bookingId), fields, caller, idempotencyKey);
     }
+
+    public Object mine(Map<String, Object> filters, CallerContext caller) {
+        return get("mine", Map.of(), filters, caller);
+    }
 }

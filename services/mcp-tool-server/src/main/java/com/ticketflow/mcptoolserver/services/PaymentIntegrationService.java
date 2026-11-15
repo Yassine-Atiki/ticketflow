@@ -31,4 +31,8 @@ public class PaymentIntegrationService {
     public Object status(ToolArguments arguments, CallerContext caller) {
         return payments.status(arguments.requiredUuid("paymentId"), caller);
     }
+
+    public Object byBooking(ToolArguments arguments, CallerContext caller) {
+        return payments.byBooking(arguments.requiredUuid("bookingId"), caller);
+    }
 }

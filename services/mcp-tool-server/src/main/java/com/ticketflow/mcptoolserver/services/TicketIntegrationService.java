@@ -33,4 +33,10 @@ public class TicketIntegrationService {
         caller.requireBearer("Ticket Service", "mine");
         return tickets.mine(filters, caller);
     }
+
+    public Object detail(ToolArguments arguments, CallerContext caller) {
+        String ticketId = arguments.requiredUuid("ticketId");
+        caller.requireBearer("Ticket Service", "detail");
+        return tickets.detail(ticketId, caller);
+    }
 }

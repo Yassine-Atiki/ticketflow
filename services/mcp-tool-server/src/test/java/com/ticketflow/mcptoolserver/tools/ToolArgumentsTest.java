@@ -104,4 +104,35 @@ class ToolArgumentsTest {
                 .isInstanceOf(ToolFailureException.class)
                 .hasMessageContaining("UUID");
     }
+
+    @Test
+    void preferenceLanguageAndChannelAreValidated() {
+        ToolArguments valid = new ToolArguments(Map.of(
+                "language", "fr",
+                "notificationChannel", "EMAIL",
+                "marketingOptIn", true));
+        ToolArguments badLanguage = new ToolArguments(Map.of("language", "es"));
+        ToolArguments badChannel = new ToolArguments(Map.of("notificationChannel", "SMS"));
+
+        assertThat(valid.requiredPreferenceLanguage()).isEqualTo("fr");
+        assertThat(valid.requiredNotificationChannel()).isEqualTo("EMAIL");
+        assertThat(valid.optionalBoolean("marketingOptIn")).isTrue();
+        assertThatThrownBy(badLanguage::requiredPreferenceLanguage)
+                .isInstanceOf(ToolFailureException.class)
+                .hasMessageContaining("fr, en or ar");
+        assertThatThrownBy(badChannel::requiredNotificationChannel)
+                .isInstanceOf(ToolFailureException.class)
+                .hasMessageContaining("EMAIL or TELEGRAM");
+    }
+
+    @Test
+    void bookingStatusFilterRejectsUnknownValues() {
+        ToolArguments valid = new ToolArguments(Map.of("status", "CONFIRMED"));
+        ToolArguments invalid = new ToolArguments(Map.of("status", "ISSUED"));
+
+        assertThat(valid.optionalBookingStatus()).isEqualTo("CONFIRMED");
+        assertThatThrownBy(invalid::optionalBookingStatus)
+                .isInstanceOf(ToolFailureException.class)
+                .hasMessageContaining("PENDING_PAYMENT");
+    }
 }

@@ -101,6 +101,10 @@ ticketflow:
             page: page
             size: size
             status: status
+        detail:
+          method: GET
+          path: /api/v1/me/tickets/{ticketId}
+          contract-confirmed: false
     booking:
       base-url: ${BOOKING_SERVICE_URL:}
       connect-timeout: 2s
@@ -124,6 +128,14 @@ ticketflow:
           contract-confirmed: false
           body:
             reason: reason
+        mine:
+          method: GET
+          path: /api/v1/me/bookings
+          contract-confirmed: false
+          query:
+            status: status
+            page: page
+            size: size
     payment:
       base-url: ${PAYMENT_SERVICE_URL:}
       connect-timeout: 2s
@@ -141,6 +153,10 @@ ticketflow:
           method: GET
           path: /api/payments/{id}
           contract-confirmed: false
+        byBooking:
+          method: GET
+          path: /api/payments/booking/{bookingId}
+          contract-confirmed: false
     customer:
       # Implemented Customer Service API. Its README documents port 8081.
       # application.properties in that module does not set server.port (Boot default is 8080).
@@ -153,3 +169,15 @@ ticketflow:
           method: GET
           path: /api/customers/{customerId}
           contract-confirmed: true
+        preferencesGet:
+          method: GET
+          path: /api/customers/{id}/preferences
+          contract-confirmed: false
+        preferencesPut:
+          method: PUT
+          path: /api/customers/{id}/preferences
+          contract-confirmed: false
+          body:
+            language: language
+            notificationChannel: notificationChannel
+            marketingOptIn: marketingOptIn

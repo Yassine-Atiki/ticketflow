@@ -51,6 +51,68 @@ class DownstreamHttpTest {
     }
 
     @Test
+    void doesNotCallUnconfirmedPreferencesOrTicketDetail() {
+        DownstreamServicesProperties properties = new DownstreamServicesProperties();
+        properties.getCustomer().setBaseUrl(wireMock.baseUrl());
+        properties.getCustomer().getOperations().put(
+                "preferencesGet",
+                operation("GET", "/api/customers/{id}/preferences", false));
+        properties.getTicket().setBaseUrl(wireMock.baseUrl());
+        properties.getTicket().getOperations().put(
+                "detail",
+                operation("GET", "/api/v1/me/tickets/{ticketId}", false));
+        DownstreamHttp http = new DownstreamHttp(properties, new SecurityProperties());
+
+        assertThatThrownBy(() -> http.invoke(
+                "customer", "preferencesGet", Map.of("id", "42"), Map.of(), CallerContext.anonymous(), null))
+                .isInstanceOf(ToolFailureException.class)
+                .extracting(ex -> ((ToolFailureException) ex).failure().code())
+                .isEqualTo("CONTRACT_NOT_CONFIRMED");
+        assertThatThrownBy(() -> http.invoke(
+                "ticket",
+                "detail",
+                Map.of("ticketId", "7d09ea60-5ba3-4a39-a13b-d5b15055f39c"),
+                Map.of(),
+                new CallerContext("Bearer test-token"),
+                null))
+                .isInstanceOf(ToolFailureException.class)
+                .extracting(ex -> ((ToolFailureException) ex).failure().code())
+                .isEqualTo("CONTRACT_NOT_CONFIRMED");
+        wireMock.verify(0, getRequestedFor(urlEqualTo("/api/customers/42/preferences")));
+        wireMock.verify(0, getRequestedFor(urlEqualTo("/api/v1/me/tickets/7d09ea60-5ba3-4a39-a13b-d5b15055f39c")));
+    }
+
+    @Test
+    void redactsTicketControlCodeFromASuccessfulBody() {
+        wireMock.stubFor(get(urlEqualTo("/api/v1/me/tickets/7d09ea60-5ba3-4a39-a13b-d5b15055f39c"))
+                .willReturn(aResponse()
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                {"ticketId":"7d09ea60-5ba3-4a39-a13b-d5b15055f39c","status":"ISSUED","controlCode":"tkt_secret"}
+                                """)));
+        DownstreamServicesProperties properties = new DownstreamServicesProperties();
+        properties.getTicket().setBaseUrl(wireMock.baseUrl());
+        properties.getTicket().setConnectTimeout(Duration.ofMillis(500));
+        properties.getTicket().setResponseTimeout(Duration.ofSeconds(2));
+        properties.getTicket().getOperations().put(
+                "detail",
+                operation("GET", "/api/v1/me/tickets/{ticketId}", true));
+        DownstreamHttp http = new DownstreamHttp(properties, new SecurityProperties());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> body = (Map<String, Object>) http.invoke(
+                "ticket",
+                "detail",
+                Map.of("ticketId", "7d09ea60-5ba3-4a39-a13b-d5b15055f39c"),
+                Map.of(),
+                new CallerContext("Bearer test-token"),
+                null);
+
+        assertThat(body).containsEntry("status", "ISSUED");
+        assertThat(body).containsEntry("controlCode", "[redacted]");
+    }
+
+    @Test
     void returnsTheDownstreamPayloadAndForwardsAuthorization() {
         wireMock.stubFor(get(urlEqualTo("/api/customers/42"))
                 .withHeader("Authorization", equalTo("Bearer test-token"))

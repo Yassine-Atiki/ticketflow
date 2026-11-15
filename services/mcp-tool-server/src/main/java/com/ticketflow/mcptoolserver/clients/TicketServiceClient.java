@@ -14,4 +14,8 @@ public class TicketServiceClient extends HttpServiceClient {
     public Object mine(Map<String, Object> filters, CallerContext caller) {
         return get("mine", Map.of(), filters, caller);
     }
+
+    public Object detail(String ticketId, CallerContext caller) {
+        return get("detail", Map.of("ticketId", ticketId), Map.of(), caller);
+    }
 }

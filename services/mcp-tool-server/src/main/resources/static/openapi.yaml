@@ -5,8 +5,9 @@ info:
   description: >
     HTTP surface of the MCP tool server. Tool calls use the MCP Streamable HTTP
     endpoint. GET /api/tools lists the registered tools and does not execute them.
-    Downstream booking, payment, event and ticket calls stay disabled until those
-    services implement their published contracts.
+    Downstream booking, payment, event, ticket and preference calls stay disabled
+    until those services implement their published contracts. Customer profile is
+    the only enabled downstream call today.
 servers:
   - url: http://localhost:8090
     description: Local MCP tool server

@@ -18,4 +18,8 @@ public class PaymentServiceClient extends HttpServiceClient {
     public Object status(String paymentId, CallerContext caller) {
         return get("status", Map.of("id", paymentId), Map.of(), caller);
     }
+
+    public Object byBooking(String bookingId, CallerContext caller) {
+        return get("byBooking", Map.of("bookingId", bookingId), Map.of(), caller);
+    }
 }

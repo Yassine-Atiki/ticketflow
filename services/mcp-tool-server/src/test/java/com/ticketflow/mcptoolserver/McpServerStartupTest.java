@@ -30,12 +30,17 @@ class McpServerStartupTest {
             "search_events",
             "get_event_details",
             "get_my_tickets",
+            "get_my_ticket",
             "create_booking",
+            "list_my_bookings",
             "get_booking_status",
             "cancel_booking",
             "initiate_payment",
             "get_payment_status",
-            "get_customer_profile");
+            "get_payments_by_booking",
+            "get_customer_profile",
+            "get_customer_preferences",
+            "update_customer_preferences");
 
     @LocalServerPort
     private int port;
@@ -65,6 +70,34 @@ class McpServerStartupTest {
             assertThat(McpTestClient.body(result))
                     .containsEntry("code", "CONTRACT_NOT_CONFIRMED")
                     .containsEntry("status", "ERROR");
+        }
+    }
+
+    @Test
+    void newlyMappedToolsStayDisabledUntilContractsAreConfirmed() {
+        try (McpSyncClient client = McpTestClient.connect(port, "Bearer test-token")) {
+            assertThat(McpTestClient.body(client.callTool(McpTestClient.call(
+                    "get_customer_preferences", Map.of("customerId", "42")))))
+                    .containsEntry("code", "CONTRACT_NOT_CONFIRMED");
+            assertThat(McpTestClient.body(client.callTool(McpTestClient.call(
+                    "update_customer_preferences",
+                    Map.of(
+                            "customerId", "42",
+                            "language", "fr",
+                            "notificationChannel", "EMAIL",
+                            "userConfirmed", true)))))
+                    .containsEntry("code", "CONTRACT_NOT_CONFIRMED");
+            assertThat(McpTestClient.body(client.callTool(McpTestClient.call(
+                    "list_my_bookings", Map.of()))))
+                    .containsEntry("code", "CONTRACT_NOT_CONFIRMED");
+            assertThat(McpTestClient.body(client.callTool(McpTestClient.call(
+                    "get_my_ticket",
+                    Map.of("ticketId", "7d09ea60-5ba3-4a39-a13b-d5b15055f39c")))))
+                    .containsEntry("code", "CONTRACT_NOT_CONFIRMED");
+            assertThat(McpTestClient.body(client.callTool(McpTestClient.call(
+                    "get_payments_by_booking",
+                    Map.of("bookingId", "b3e1f9a0-1c2d-4e5f-8a9b-0c1d2e3f4a5b")))))
+                    .containsEntry("code", "CONTRACT_NOT_CONFIRMED");
         }
     }
 

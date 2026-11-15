@@ -21,6 +21,10 @@ public final class ToolArguments {
     private static final int PAYMENT_IDEMPOTENCY_LIMIT = 255;
     private static final Pattern CUSTOMER_ID = Pattern.compile("[1-9][0-9]{0,18}");
     private static final Set<String> TICKET_STATUSES = Set.of("ISSUED", "CANCELLED");
+    private static final Set<String> BOOKING_STATUSES =
+            Set.of("PENDING_PAYMENT", "CONFIRMED", "EXPIRED", "CANCELLED");
+    private static final Set<String> PREFERENCE_LANGUAGES = Set.of("fr", "en", "ar");
+    private static final Set<String> NOTIFICATION_CHANNELS = Set.of("EMAIL", "TELEGRAM");
     private static final int MAX_TEXT = 200;
     private static final int MAX_REASON = 255;
 
@@ -147,6 +151,46 @@ public final class ToolArguments {
             throw new ToolFailureException(ToolFailure.invalid("status must be ISSUED or CANCELLED."));
         }
         return value;
+    }
+
+    public String optionalBookingStatus() {
+        String value = optionalText("status");
+        if (value == null) {
+            return null;
+        }
+        if (!BOOKING_STATUSES.contains(value)) {
+            throw new ToolFailureException(ToolFailure.invalid(
+                    "status must be PENDING_PAYMENT, CONFIRMED, EXPIRED or CANCELLED."));
+        }
+        return value;
+    }
+
+    public String requiredPreferenceLanguage() {
+        String value = requiredText("language");
+        if (!PREFERENCE_LANGUAGES.contains(value)) {
+            throw new ToolFailureException(ToolFailure.invalid("language must be fr, en or ar."));
+        }
+        return value;
+    }
+
+    public String requiredNotificationChannel() {
+        String value = requiredText("notificationChannel");
+        if (!NOTIFICATION_CHANNELS.contains(value)) {
+            throw new ToolFailureException(ToolFailure.invalid(
+                    "notificationChannel must be EMAIL or TELEGRAM."));
+        }
+        return value;
+    }
+
+    public Boolean optionalBoolean(String name) {
+        if (!arguments.containsKey(name) || arguments.get(name) == null) {
+            return null;
+        }
+        Object value = arguments.get(name);
+        if (!(value instanceof Boolean flag)) {
+            throw new ToolFailureException(ToolFailure.invalid(name + " must be a boolean."));
+        }
+        return flag;
     }
 
     public List<Map<String, Object>> requiredBookingLines() {

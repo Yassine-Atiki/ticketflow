@@ -57,6 +57,21 @@ public class PaymentToolConfiguration {
                 true, false, true), 80);
     }
 
+    @Bean
+    McpTool getPaymentsByBookingTool(PaymentIntegrationService payments) {
+        return tool(payments::byBooking, ToolDefinitions.define(
+                "get_payments_by_booking",
+                "List payments for a booking with GET /api/payments/booking/{bookingId}. "
+                        + "The returned statuses are not interpreted as capture."
+                        + DISABLED,
+                objectSchema(properties(
+                        "bookingId", stringProperty(
+                                "Booking identifier. The payment contract requires a UUID.",
+                                UUID_PATTERN)),
+                        List.of("bookingId")),
+                true, false, true), 85);
+    }
+
     private static McpTool tool(Handler handler, McpSchema.Tool definition, int order) {
         return new AbstractMcpTool(definition, order) {
             @Override

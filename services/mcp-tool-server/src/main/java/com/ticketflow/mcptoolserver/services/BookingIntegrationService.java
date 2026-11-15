@@ -44,4 +44,22 @@ public class BookingIntegrationService {
         caller.requireBearer("Booking Service", "cancel");
         return bookings.cancel(bookingId, fields, caller, idempotencyKey);
     }
+
+    public Object mine(ToolArguments arguments, CallerContext caller) {
+        Map<String, Object> filters = new LinkedHashMap<>();
+        String status = arguments.optionalBookingStatus();
+        if (status != null) {
+            filters.put("status", status);
+        }
+        Integer page = arguments.optionalInt("page", 0, 10_000);
+        if (page != null) {
+            filters.put("page", page);
+        }
+        Integer size = arguments.optionalInt("size", 1, 50);
+        if (size != null) {
+            filters.put("size", size);
+        }
+        caller.requireBearer("Booking Service", "mine");
+        return bookings.mine(filters, caller);
+    }
 }

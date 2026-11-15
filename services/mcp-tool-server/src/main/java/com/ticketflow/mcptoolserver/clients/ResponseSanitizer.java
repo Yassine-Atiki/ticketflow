@@ -20,7 +20,8 @@ public final class ResponseSanitizer {
             "accesstoken",
             "refreshtoken",
             "securitycode",
-            "authorization");
+            "authorization",
+            "controlcode");
 
     private ResponseSanitizer() {
     }

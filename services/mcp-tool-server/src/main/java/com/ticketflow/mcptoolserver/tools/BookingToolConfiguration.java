@@ -4,6 +4,7 @@ import static com.ticketflow.mcptoolserver.tools.ToolDefinitions.IDEMPOTENCY_PAT
 import static com.ticketflow.mcptoolserver.tools.ToolDefinitions.UUID_PATTERN;
 import static com.ticketflow.mcptoolserver.tools.ToolSchemas.arrayProperty;
 import static com.ticketflow.mcptoolserver.tools.ToolSchemas.booleanProperty;
+import static com.ticketflow.mcptoolserver.tools.ToolSchemas.enumProperty;
 import static com.ticketflow.mcptoolserver.tools.ToolSchemas.integerProperty;
 import static com.ticketflow.mcptoolserver.tools.ToolSchemas.objectSchema;
 import static com.ticketflow.mcptoolserver.tools.ToolSchemas.properties;
@@ -46,6 +47,23 @@ public class BookingToolConfiguration {
                         "idempotencyKey", stringProperty("Required Idempotency-Key value.", IDEMPOTENCY_PATTERN)),
                         List.of("eventId", "lines", "userConfirmed", "idempotencyKey")),
                 false, false, false), 40);
+    }
+
+    @Bean
+    McpTool listMyBookingsTool(BookingIntegrationService bookings) {
+        return tool(bookings::mine, ToolDefinitions.define(
+                "list_my_bookings",
+                "List bookings for the authenticated caller through GET /api/v1/me/bookings. "
+                        + "The owner is the bearer token subject. This tool does not accept a customer id."
+                        + DISABLED,
+                objectSchema(properties(
+                        "status", enumProperty(
+                                "Optional booking status filter.",
+                                List.of("PENDING_PAYMENT", "CONFIRMED", "EXPIRED", "CANCELLED")),
+                        "page", integerProperty("Zero-based page index.", 0, 10_000),
+                        "size", integerProperty("Page size. The booking contract caps size at 50.", 1, 50)),
+                        List.of()),
+                true, false, true), 45);
     }
 
     @Bean

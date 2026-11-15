@@ -48,6 +48,14 @@ public final class ToolSchemas {
         return Map.of("type", "boolean", "description", description);
     }
 
+    public static Map<String, Object> enumProperty(String description, List<String> values) {
+        Map<String, Object> property = new LinkedHashMap<>();
+        property.put("type", "string");
+        property.put("description", description);
+        property.put("enum", List.copyOf(values));
+        return property;
+    }
+
     public static Map<String, Object> arrayProperty(String description, Map<String, Object> items) {
         return Map.of("type", "array", "description", description, "minItems", 1, "items", items);
     }

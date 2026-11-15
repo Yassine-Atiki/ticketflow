@@ -25,11 +25,13 @@ public class McpServerConfiguration {
 
     static final String INSTRUCTIONS = """
             TicketFlow MCP tool server. Tools delegate to platform microservices and do not apply booking, payment or inventory rules.
-            create_booking, cancel_booking and initiate_payment stay unexecuted until userConfirmed is true after an explicit user agreement.
+            create_booking, cancel_booking, initiate_payment and update_customer_preferences stay unexecuted until userConfirmed is true after an explicit user agreement.
             Booking and ticket tools identify the caller from the bearer token. They do not accept a customerId owner.
             A payment tool result never means the payment was captured.
+            Ticket controlCode values are redacted before they reach the assistant.
             Tools whose downstream implementation is not enabled return CONTRACT_NOT_CONFIRMED and do not send an HTTP call.
             Customer profile reads use the implemented Customer Service path GET /api/customers/{id}.
+            Preference tools stay disabled until Customer PR #7 is confirmed on develop.
             """;
 
     @Bean

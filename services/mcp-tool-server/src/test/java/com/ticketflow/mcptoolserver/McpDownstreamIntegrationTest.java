@@ -160,4 +160,24 @@ class McpDownstreamIntegrationTest {
             assertThat(McpTestClient.body(result)).containsEntry("code", "DOWNSTREAM_TIMEOUT");
         }
     }
+
+    @Test
+    void disabledMappedToolsDoNotHitDownstream() {
+        try (McpSyncClient client = McpTestClient.connect(port, "Bearer test-token")) {
+            assertThat(McpTestClient.body(client.callTool(McpTestClient.call(
+                    "get_customer_preferences", Map.of("customerId", "42")))))
+                    .containsEntry("code", "CONTRACT_NOT_CONFIRMED");
+            assertThat(McpTestClient.body(client.callTool(McpTestClient.call(
+                    "list_my_bookings", Map.of()))))
+                    .containsEntry("code", "CONTRACT_NOT_CONFIRMED");
+            assertThat(McpTestClient.body(client.callTool(McpTestClient.call(
+                    "get_payments_by_booking",
+                    Map.of("bookingId", "b3e1f9a0-1c2d-4e5f-8a9b-0c1d2e3f4a5b")))))
+                    .containsEntry("code", "CONTRACT_NOT_CONFIRMED");
+        }
+        WIREMOCK.verify(0, getRequestedFor(urlEqualTo("/api/customers/42/preferences")));
+        WIREMOCK.verify(0, getRequestedFor(urlEqualTo("/api/v1/me/bookings")));
+        WIREMOCK.verify(0, getRequestedFor(urlEqualTo(
+                "/api/payments/booking/b3e1f9a0-1c2d-4e5f-8a9b-0c1d2e3f4a5b")));
+    }
 }
