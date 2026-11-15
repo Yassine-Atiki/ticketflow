@@ -83,7 +83,9 @@ Service URLs and endpoint paths come from configuration. Empty URLs are allowed:
 | `CUSTOMER_SERVICE_URL` | Customer Service base URL | `http://localhost:8081` |
 | `NOTIFICATION_SERVICE_URL` | Notification Service base URL | empty |
 
-`customer-service` is the only business service in this repository. Its README documents port 8081. Its `application.properties` does not set `server.port`, so a locally launched process listens on Spring Boot's default port 8080 unless that is changed. Point `CUSTOMER_SERVICE_URL` at the port that is actually open.
+Customer Service is the only downstream API this module calls. Its README documents port 8081. Its `application.properties` does not set `server.port`, so a process started without Config Server listens on 8080. Point `CUSTOMER_SERVICE_URL` at the port that is actually open.
+
+Event, ticket, booking and payment paths in `application.yaml` match the contracts published on the team branches. Those services do not implement the operations yet, so `contract-confirmed` stays `false`. There is no notification service, and this module does not expose notification tools.
 
 Timeouts, HTTP methods, paths, query names, body field names and the idempotency header are in `src/main/resources/application.yaml` under `ticketflow.services.<service>`. Each operation has `contract-confirmed`. While that flag is `false`, the tool is still discoverable, and invoking it returns `CONTRACT_NOT_CONFIRMED` without an HTTP call. Set the flag to `true` only after the owning team publishes the OpenAPI contract and the path, method and field names in this file match that contract.
 
@@ -91,40 +93,36 @@ Timeouts, HTTP methods, paths, query names, body field names and the idempotency
 |---|---|
 | `ticketflow.services.<service>.connect-timeout` | TCP connect timeout. Default `2s`. |
 | `ticketflow.services.<service>.response-timeout` | Time to wait for the response. Default `5s`. |
-| `ticketflow.services.<service>.idempotency-header` | Header used when a tool receives `idempotencyKey`. Default `Idempotency-Key`. Whether any service honors it is not confirmed. |
+| `ticketflow.services.<service>.idempotency-header` | Header sent for `idempotencyKey`. Default `Idempotency-Key`. Booking create and payment initiation require it. |
 | `ticketflow.security.propagate-authorization` | Copy the inbound `Authorization` header onto the downstream call. Default `true`. |
 | `ticketflow.mcp.allowed-hosts` | Accepted `Host` headers. `localhost:*` matches any port. |
 | `ticketflow.mcp.allowed-origins` | Accepted browser `Origin` headers. Absent `Origin` is allowed. |
 
-An `Authorization` value is forwarded and is never written to logs or tool results. This server does not validate the token. Keycloak is a later roadmap step and is not part of the platform yet, so there is no confirmed way to derive the customer id from a token. Tools that need a customer ask for `customerId`.
+An `Authorization` value is forwarded and is never written to logs or tool results. This server does not validate the token. Booking and ticket tools require `Authorization: Bearer ...` before they would call downstream, because those contracts take the caller from the token and reject a caller-supplied customer id. Customer profile still takes the numeric `customerId` used by `GET /api/customers/{id}`.
 
 The MCP endpoint itself has Host and Origin checks and no authentication layer. Keep it off the public internet until the platform security design exists.
 
 ## Registered tools
 
-Consequential tools (`create_booking`, `cancel_booking`, `initiate_payment`, `resend_booking_confirmation`) require `userConfirmed: true`. The assistant must set that flag only after the user has explicitly agreed. `false` or a missing confirmation returns `CONFIRMATION_REQUIRED` with `isError: true`, and no downstream call is made.
+Consequential tools (`create_booking`, `cancel_booking`, `initiate_payment`) require `userConfirmed: true`. The assistant must set that flag only after the user has explicitly agreed. `false` or a missing confirmation returns `CONFIRMATION_REQUIRED` with `isError: true`, and no downstream call is made.
 
 `initiate_payment` accepts a booking id. It rejects card numbers, CVV, PAN and an amount. Payment Service decides the amount from the booking. A tool result of `OK` means the HTTP call returned a JSON body. It does not mean the payment was captured. Read `data` for the status Payment Service returned.
 
-Mutating calls are not retried. When the caller supplies `idempotencyKey`, it is sent on the configured header so the downstream service can deduplicate if it supports that header.
+Mutating calls are not retried. `create_booking` and `initiate_payment` require `idempotencyKey` and send it as `Idempotency-Key`. Booking accepts at most 100 characters. Payment accepts at most 255.
 
-Identifier fields are limited to letters, digits, `_` and `-`. `customerId` must be the positive numeric id Customer Service already uses. `quantity` is limited to 1..50 at this boundary; Booking Service still owns the real inventory limit.
+Booking `eventId`, `ticketTierId` and `bookingId`, and payment `bookingId` and `paymentId`, must be UUIDs. `customerId` on the profile tool must be the positive numeric id Customer Service already uses. A booking line quantity is 1..10, which is the cap in the booking contract. Event details keep the identifier accepted by `GET /api/v1/events/{id}`.
 
-| Tool | Required arguments | Optional arguments | Downstream contract |
+| Tool | Required arguments | Optional arguments | Downstream |
 |---|---|---|---|
-| `search_events` | | `keyword`, `category`, `date` (`YYYY-MM-DD`), `location` | Not confirmed |
-| `get_event_details` | `eventId` | | Not confirmed |
-| `get_upcoming_events` | | `limit` (1..100), `category`, `location` | Not confirmed |
-| `check_ticket_availability` | `eventId` | `ticketType`, `quantity` | Not confirmed |
-| `get_my_tickets` | `customerId` | | Not confirmed |
-| `create_booking` | `eventId`, `customerId`, `quantity`, `userConfirmed` | `ticketType`, `idempotencyKey` | Not confirmed |
-| `get_booking_status` | `bookingId` | | Not confirmed |
-| `cancel_booking` | `bookingId`, `customerId`, `userConfirmed` | `reason`, `idempotencyKey` | Not confirmed |
-| `initiate_payment` | `bookingId`, `userConfirmed` | `idempotencyKey` | Not confirmed |
-| `get_payment_status` | `paymentId` | | Not confirmed |
-| `get_customer_profile` | `customerId` | | Confirmed: `GET /api/customers/{customerId}` |
-| `get_notification_history` | `customerId` | `bookingId` | Not confirmed |
-| `resend_booking_confirmation` | `bookingId`, `customerId`, `userConfirmed` | `idempotencyKey` | Not confirmed |
+| `search_events` | | `q`, `categoryId`, `city`, `dateFrom`, `dateTo`, `page`, `size`, `sort` | Disabled. Contract: `GET /api/v1/events` |
+| `get_event_details` | `eventId` | | Disabled. Contract: `GET /api/v1/events/{id}` |
+| `get_my_tickets` | bearer token | `page`, `size`, `status` | Disabled. Contract: `GET /api/v1/me/tickets` |
+| `create_booking` | `eventId`, `lines`, `userConfirmed`, `idempotencyKey`, bearer token | | Disabled. Contract: `POST /api/v1/bookings` |
+| `get_booking_status` | `bookingId`, bearer token | | Disabled. Contract: `GET /api/v1/bookings/{id}` |
+| `cancel_booking` | `bookingId`, `userConfirmed`, bearer token | `reason`, `idempotencyKey` | Disabled. Contract: `POST /api/v1/bookings/{id}/cancel` |
+| `initiate_payment` | `bookingId`, `userConfirmed`, `idempotencyKey` | `provider` | Disabled. Contract: `POST /api/payments` |
+| `get_payment_status` | `paymentId` | | Disabled. Contract: `GET /api/payments/{id}` |
+| `get_customer_profile` | `customerId` | | Enabled: `GET /api/customers/{customerId}` |
 
 Every input schema sets `additionalProperties` to `false`.
 
@@ -170,9 +168,9 @@ Arguments:
 
 ```json
 {
-  "eventId": "evt-1",
-  "customerId": "42",
-  "quantity": 2,
+  "eventId": "e4f5a6b7-c8d9-4e0f-a1b2-c3d4e5f6a7b8",
+  "lines": [{ "ticketTierId": "f1e2d3c4-b5a6-4978-8695-a4b3c2d1e0f9", "quantity": 2 }],
+  "idempotencyKey": "idem-1",
   "userConfirmed": false
 }
 ```
@@ -191,10 +189,10 @@ Result (`isError` true). Booking Service is not called:
 ### Example: unconfirmed catalog
 
 ```json
-{ "keyword": "jazz" }
+{ "q": "jazz" }
 ```
 
-`search_events` answers with `code` `CONTRACT_NOT_CONFIRMED` until `ticketflow.services.event.operations.search.contract-confirmed` is true and `EVENT_SERVICE_URL` points at the real service.
+`search_events` answers with `code` `CONTRACT_NOT_CONFIRMED` until Event Service implements `GET /api/v1/events` and `contract-confirmed` is set to true.
 
 ## Error codes
 
@@ -207,7 +205,7 @@ Result (`isError` true). Booking Service is not called:
 | `AUTHENTICATION_FAILED` | The downstream service returned HTTP 401 or 403. The body is discarded. |
 | `DOWNSTREAM_TIMEOUT` | The response timeout elapsed. |
 | `DOWNSTREAM_UNAVAILABLE` | The connection failed. |
-| `DOWNSTREAM_HTTP_ERROR` | Any other HTTP 4xx or 5xx. A problem-detail `detail` or `title` is included when the body is JSON. |
+| `DOWNSTREAM_HTTP_ERROR` | Any other HTTP 4xx or 5xx. A problem-detail `detail` or `title`, or a JSON `code` and `message`, is included when present. |
 | `UNEXPECTED_RESPONSE` | The body was not a JSON object or array, or it was larger than 256 KiB. |
 | `MISCONFIGURED` | The operation path or method in configuration cannot be used. |
 | `UNEXPECTED_ERROR` | An unexpected failure. The message has no stack trace. |
@@ -218,7 +216,7 @@ Response objects are scanned for payment-credential field names (`cardNumber`, `
 
 ## Connecting the AI Assistant
 
-The AI Assistant Service is not in this repository yet. When it exists, point its MCP client at:
+Point the AI Assistant MCP client at:
 
 ```text
 http://mcp-tool-server:8090/mcp
@@ -229,7 +227,7 @@ Use Streamable HTTP. The server name is `ticketflow-mcp` and the instructions on
 The assistant should:
 
 1. Call `tools/list` and treat tool descriptions as the source of which calls change data.
-2. Ask the user before `create_booking`, `cancel_booking`, `initiate_payment` and `resend_booking_confirmation`, then retry with `userConfirmed: true`.
+2. Ask the user before `create_booking`, `cancel_booking` and `initiate_payment`, then retry with `userConfirmed: true`.
 3. Show `CONFIRMATION_REQUIRED`, `CONTRACT_NOT_CONFIRMED` and downstream errors to the user instead of assuming the action happened.
 4. Read payment status from `get_payment_status` after `initiate_payment`. Do not treat the initiate call as a captured payment.
 5. Send the caller's `Authorization` header on the MCP request when a token exists. This server forwards it and does not inspect it.
@@ -240,16 +238,11 @@ These items are intentionally not invented:
 
 | Topic | State |
 |---|---|
-| Event, Ticket, Booking, Payment and Notification Service URLs, ports, paths, methods, query names and body fields | Placeholder values in `application.yaml`, `contract-confirmed: false` |
-| Idempotency-Key support | Header is forwarded when a key is present. No service has confirmed that it stores the key. |
-| Authentication scheme, token audience and how a token maps to `customerId` | Not implemented. Customer Service currently has no authentication. |
-| Who may cancel a booking or pay for it | Must be enforced by Booking Service and Payment Service. This server also requires `customerId` on cancel and the profile id on customer reads. |
-| Payment statuses, redirect URLs, and the capture flow | Not confirmed. No card data is accepted here. |
-| Ticket types, seat maps and inventory limits | Not confirmed. The quantity cap of 50 is only a guardrail on model input. |
-| Notification channels and resend semantics | Not confirmed. |
-| Error body shape for services other than Customer Service | Problem-detail `detail` and `title` are read when present. Other bodies become a generic HTTP status message. |
-| API keys or service-to-service credentials | Not configured. Only the inbound `Authorization` header is propagated. |
-| Eureka and Config Server registration for this module | Not wired. Those platform modules are still marked planned, and this service starts without them. |
+| Event, ticket, booking and payment controllers | Contracts are mapped and `contract-confirmed` is false until the controllers exist |
+| Notification tools | Removed. No notification service or contract exists |
+| JWT signature, issuer and audience | Not validated. Booking and ticket calls require a Bearer header and forward it |
+| Payment capture | Not interpreted. No card data is accepted |
+| Eureka registration | Client is on the classpath and disabled. Config Server import is optional so this process still starts without port 8888 |
 
 When a contract arrives, update that operation's `method`, `path`, `query` and `body` map, set the base URL, then set `contract-confirmed: true`. Flat JSON fields can be renamed from configuration. A nested body or a header other than `Authorization` and the idempotency header needs a small change in the matching client.
 
@@ -259,6 +252,8 @@ When a contract arrives, update that operation's `method`, `path`, `query` and `
 
 `ConsequentialOperationTest` checks that booking and payment methods do not call their client without confirmation, and that payment initiation forwards only `bookingId`.
 
-`McpServerStartupTest` starts the server, lists the thirteen tools over Streamable HTTP, and checks the confirmation and contract gates.
+`McpServerStartupTest` starts the server, lists the nine tools over Streamable HTTP, and checks the confirmation gate, the contract gate, and the Compose host name.
+
+`PublishedContractAlignmentTest` checks the configured paths and bodies against the published team contracts and checks that unimplemented operations stay disabled.
 
 `McpDownstreamIntegrationTest` drives the same endpoint against WireMock for a customer profile read, a refused payment, an authentication failure, a payment timeout, and a booking that is not sent when confirmation is missing.
