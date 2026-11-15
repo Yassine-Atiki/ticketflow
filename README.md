@@ -26,6 +26,7 @@ bookings, unreliable payment providers, and asynchronous notifications.
 | Module | Role | Key technology | Status |
 |---|---|---|---|
 | `customer-service` | Customer profiles (CRUD) | Spring Web, JPA | Done |
+| `mcp-tool-server` | MCP tools for the AI Assistant | MCP Java SDK, Streamable HTTP | In progress |
 | `api-gateway` | Single entry point, routing, rate limiting | Spring Cloud Gateway | Planned |
 | `discovery-server` | Service registry | Eureka | Planned |
 | `event-service` | Events and seats catalog | Spring Web, JPA | Planned |

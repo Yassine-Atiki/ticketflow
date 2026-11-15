@@ -6,6 +6,26 @@ services:
     container_name: customer-service
     ports:
       - "127.0.0.1:8081:8081"
+
+  mcp-tool-server:
+    build:
+      context: ..
+      dockerfile: services/mcp-tool-server/Dockerfile
+    container_name: mcp-tool-server
+    ports:
+      - "127.0.0.1:8090:8090"
+    environment:
+      SERVER_PORT: "8090"
+      # Ports are the ones published by each service contract. Inside Compose, two
+      # services may both listen on 8082 because each container has its own port space.
+      # event-service, booking-service, payment-service and ticket-service are not
+      # defined in this file yet; these URLs are ready for when those services are added.
+      CUSTOMER_SERVICE_URL: http://customer-service:8081
+      EVENT_SERVICE_URL: http://event-service:8082
+      PAYMENT_SERVICE_URL: http://payment-service:8082
+      BOOKING_SERVICE_URL: http://booking-service:8083
+      TICKET_SERVICE_URL: http://ticket-service:8083
+
   postgres:
     image: postgres:17
     container_name: ticketflow-postgres

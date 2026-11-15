@@ -1,0 +1,78 @@
+openapi: 3.1.0
+info:
+  title: TicketFlow MCP Tool Server
+  version: 0.0.1-SNAPSHOT
+  description: >
+    HTTP surface of the MCP tool server. Tool calls use the MCP Streamable HTTP
+    endpoint. GET /api/tools lists the registered tools and does not execute them.
+    Downstream booking, payment, event, ticket and preference calls stay disabled
+    until those services implement their published contracts. Customer profile is
+    the only enabled downstream call today.
+servers:
+  - url: http://localhost:8090
+    description: Local MCP tool server
+paths:
+  /api/tools:
+    get:
+      operationId: listMcpTools
+      summary: List registered MCP tools
+      description: >
+        Returns each tool name, description, JSON Schema input and hint flags.
+        Invoke a tool through MCP at /mcp. This endpoint does not call downstream services.
+      responses:
+        '200':
+          description: Registered tools
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ToolDescription'
+  /mcp:
+    post:
+      operationId: mcpStreamableHttp
+      summary: MCP Streamable HTTP endpoint
+      description: >
+        JSON-RPC endpoint for MCP initialize, tools/list and tools/call.
+        The Host header must be localhost, 127.0.0.1 or mcp-tool-server.
+        This is not a REST facade for the downstream TicketFlow APIs.
+      parameters:
+        - name: Host
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: Authorization
+          in: header
+          required: false
+          description: Forwarded to downstream services when present. This server does not validate the token.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: JSON-RPC response, sometimes as text/event-stream
+        '202':
+          description: Accepted MCP notification
+        '421':
+          description: Host or Origin was rejected
+components:
+  schemas:
+    ToolDescription:
+      type: object
+      required: [name, inputSchema]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        inputSchema:
+          type: object
+          additionalProperties: true
+        readOnly:
+          type: boolean
+        destructive:
+          type: boolean
+        idempotent:
+          type: boolean
+        openWorld:
+          type: boolean
