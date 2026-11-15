@@ -90,15 +90,15 @@ class McpDownstreamIntegrationTest {
     void createBookingWithConfirmationFalseDoesNotReachBookingService() {
         try (McpSyncClient client = McpTestClient.connect(port, null)) {
             var result = client.callTool(McpTestClient.call("create_booking", Map.of(
-                    "eventId", "evt-1",
-                    "customerId", "42",
-                    "quantity", 2,
+                    "eventId", "e4f5a6b7-c8d9-4e0f-a1b2-c3d4e5f6a7b8",
+                    "lines", java.util.List.of(Map.of("ticketTierId", "f1e2d3c4-b5a6-4978-8695-a4b3c2d1e0f9", "quantity", 2)),
+                    "idempotencyKey", "idem-1",
                     "userConfirmed", false)));
 
             assertThat(result.isError()).isTrue();
             assertThat(McpTestClient.body(result)).containsEntry("code", "CONFIRMATION_REQUIRED");
         }
-        WIREMOCK.verify(0, postRequestedFor(urlEqualTo("/api/bookings")));
+        WIREMOCK.verify(0, postRequestedFor(urlEqualTo("/api/v1/bookings")));
     }
 
     @Test
@@ -111,7 +111,7 @@ class McpDownstreamIntegrationTest {
 
         try (McpSyncClient client = McpTestClient.connect(port, null)) {
             var result = client.callTool(McpTestClient.call("initiate_payment", Map.of(
-                    "bookingId", "book-1",
+                    "bookingId", "b3e1f9a0-1c2d-4e5f-8a9b-0c1d2e3f4a5b",
                     "userConfirmed", true,
                     "idempotencyKey", "pay-once")));
 
@@ -124,7 +124,7 @@ class McpDownstreamIntegrationTest {
         WIREMOCK.verify(postRequestedFor(urlEqualTo("/api/payments"))
                 .withHeader("Idempotency-Key", equalTo("pay-once"))
                 .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.equalToJson(
-                        "{\"bookingId\":\"book-1\"}")));
+                        "{\"bookingId\":\"b3e1f9a0-1c2d-4e5f-8a9b-0c1d2e3f4a5b\"}")));
     }
 
     @Test
@@ -146,14 +146,15 @@ class McpDownstreamIntegrationTest {
 
     @Test
     void paymentStatusTimeoutIsAnError() {
-        WIREMOCK.stubFor(get(urlEqualTo("/api/payments/pay-1"))
+        WIREMOCK.stubFor(get(urlEqualTo("/api/payments/7d09ea60-5ba3-4a39-a13b-d5b15055f39c"))
                 .willReturn(aResponse()
                         .withFixedDelay(2_000)
                         .withHeader("Content-Type", "application/json")
                         .withBody("{\"status\":\"CAPTURED\"}")));
 
         try (McpSyncClient client = McpTestClient.connect(port, null)) {
-            var result = client.callTool(McpTestClient.call("get_payment_status", Map.of("paymentId", "pay-1")));
+            var result = client.callTool(McpTestClient.call(
+                    "get_payment_status", Map.of("paymentId", "7d09ea60-5ba3-4a39-a13b-d5b15055f39c")));
 
             assertThat(result.isError()).isTrue();
             assertThat(McpTestClient.body(result)).containsEntry("code", "DOWNSTREAM_TIMEOUT");

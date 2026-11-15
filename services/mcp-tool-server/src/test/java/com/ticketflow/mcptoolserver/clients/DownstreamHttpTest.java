@@ -43,11 +43,11 @@ class DownstreamHttpTest {
     void doesNotCallAServiceWhoseContractIsNotConfirmed() {
         DownstreamHttp http = client(false, Duration.ofSeconds(2));
 
-        assertThatThrownBy(() -> http.invoke("event", "search", Map.of(), Map.of("keyword", "jazz"), CallerContext.anonymous(), null))
+        assertThatThrownBy(() -> http.invoke("event", "search", Map.of(), Map.of("q", "jazz"), CallerContext.anonymous(), null))
                 .isInstanceOf(ToolFailureException.class)
                 .extracting(ex -> ((ToolFailureException) ex).failure().code())
                 .isEqualTo("CONTRACT_NOT_CONFIRMED");
-        wireMock.verify(0, getRequestedFor(urlEqualTo("/api/events?q=jazz")));
+        wireMock.verify(0, getRequestedFor(urlEqualTo("/api/v1/events?q=jazz")));
     }
 
     @Test
@@ -120,6 +120,36 @@ class DownstreamHttpTest {
         wireMock.verify(postRequestedFor(urlEqualTo("/api/payments"))
                 .withHeader("Idempotency-Key", equalTo("idem-9"))
                 .withRequestBody(equalToJson("{\"bookingId\":\"book-1\"}")));
+    }
+
+    @Test
+    void reportsBookingStyleErrorCodeAndMessage() {
+        wireMock.stubFor(post(urlEqualTo("/api/v1/bookings"))
+                .willReturn(aResponse()
+                        .withStatus(409)
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("{\"code\":\"INSUFFICIENT_CAPACITY\",\"message\":\"Not enough seats\"}")));
+        DownstreamServicesProperties properties = new DownstreamServicesProperties();
+        Operation create = operation("POST", "/api/v1/bookings", true);
+        create.setBody(Map.of("eventId", "eventId"));
+        properties.getBooking().setBaseUrl(wireMock.baseUrl());
+        properties.getBooking().setConnectTimeout(Duration.ofMillis(500));
+        properties.getBooking().setResponseTimeout(Duration.ofSeconds(2));
+        properties.getBooking().setIdempotencyHeader("Idempotency-Key");
+        properties.getBooking().getOperations().put("create", create);
+        DownstreamHttp http = new DownstreamHttp(properties, new SecurityProperties());
+
+        assertThatThrownBy(() -> http.invoke(
+                "booking",
+                "create",
+                Map.of(),
+                Map.of("eventId", "evt-1"),
+                CallerContext.anonymous(),
+                null))
+                .isInstanceOf(ToolFailureException.class)
+                .satisfies(ex -> assertThat(((ToolFailureException) ex).failure().message())
+                        .contains("INSUFFICIENT_CAPACITY")
+                        .contains("Not enough seats"));
     }
 
     @Test
