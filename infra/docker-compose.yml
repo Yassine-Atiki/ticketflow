@@ -13,14 +13,15 @@ services:
       dockerfile: services/mcp-tool-server/Dockerfile
     container_name: mcp-tool-server
     ports:
-      - "8090:8090"
+      - "127.0.0.1:8090:8090"
     environment:
       SERVER_PORT: "8090"
-      # customer-service README documents port 8081. Its application.properties does not
-      # set server.port, so confirm the listening port before relying on this URL.
+      # Ports are the ones published by each service contract. Inside Compose, two
+      # services may both listen on 8082 because each container has its own port space.
+      # event-service, booking-service, payment-service and ticket-service are not
+      # defined in this file yet; these URLs are ready for when those services are added.
       CUSTOMER_SERVICE_URL: http://customer-service:8081
       EVENT_SERVICE_URL: http://event-service:8082
+      PAYMENT_SERVICE_URL: http://payment-service:8082
       BOOKING_SERVICE_URL: http://booking-service:8083
-      PAYMENT_SERVICE_URL: http://payment-service:8084
-      TICKET_SERVICE_URL: http://ticket-service:8085
-      NOTIFICATION_SERVICE_URL: http://notification-service:8086
+      TICKET_SERVICE_URL: http://ticket-service:8083
