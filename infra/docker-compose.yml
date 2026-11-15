@@ -5,7 +5,7 @@ services:
       dockerfile: services/customer-service/Dockerfile
     container_name: customer-service
     ports:
-      - "8081:8081"
+      - "127.0.0.1:8081:8081"
 
   mcp-tool-server:
     build:
@@ -25,3 +25,29 @@ services:
       PAYMENT_SERVICE_URL: http://payment-service:8082
       BOOKING_SERVICE_URL: http://booking-service:8083
       TICKET_SERVICE_URL: http://ticket-service:8083
+
+  postgres:
+    image: postgres:17
+    container_name: ticketflow-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ticketflow_dev
+      POSTGRES_DB: postgres
+
+    ports:
+      - "127.0.0.1:5433:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:

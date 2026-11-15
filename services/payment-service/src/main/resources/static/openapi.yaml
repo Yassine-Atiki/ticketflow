@@ -1,0 +1,542 @@
+
+openapi: 3.1.0
+
+info:
+  title: TicketFlow Payment Service API
+  version: 1.0.0
+  description: >
+    API de gestion et de simulation des paiements TicketFlow.
+    La sécurisation JWT et la vérification des signatures des webhooks
+    seront ajoutées dans une prochaine étape avec l'équipe.
+
+servers:
+  - url: http://localhost:8080
+    description: API Gateway
+  - url: http://localhost:8082
+    description: Payment Service direct - développement
+
+tags:
+  - name: Payments
+    description: Gestion des paiements
+  - name: Webhooks
+    description: Notifications des fournisseurs de paiement
+
+paths:
+
+  /api/payments:
+    post:
+      tags:
+        - Payments
+      summary: Initier un paiement
+      description: >
+        Créer une tentative de paiement associée à une réservation.
+        Le montant et la devise sont récupérés depuis le Booking Service.
+        La clé d'idempotence est limitée à l'opération d'initiation dans ce
+        service et est conservée pendant toute la durée de conservation du
+        paiement associé. Une répétition avec la même clé et la même demande
+        retourne le même paiement (201) sans créer de nouvel effet, même si la
+        réponse initiale a été perdue. La même clé associée à une demande
+        différente retourne 409. Une autre clé ne permet pas de contourner un
+        état de réservation qui ne permet plus le paiement.
+      operationId: initiatePayment
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentInitiationRequest'
+      responses:
+        '201':
+          description: Paiement créé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Données invalides
+        '404':
+          description: Réservation introuvable
+        '409':
+          description: >
+            La clé d'idempotence est déjà associée à une demande différente,
+            ou la réservation est dans un état incompatible avec un nouveau
+            paiement. Une répétition identique avec la même clé retourne le
+            paiement déjà créé avec 201.
+        '500':
+          description: Erreur interne
+
+    get:
+      tags:
+        - Payments
+      summary: Lister les paiements
+      description: Retourner une liste paginée des paiements.
+      operationId: listPayments
+      parameters:
+        - name: page
+          in: query
+          description: Numéro de page à partir de zéro.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          description: Nombre de résultats par page.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: status
+          in: query
+          description: Filtrer les paiements par statut.
+          schema:
+            $ref: '#/components/schemas/PaymentStatus'
+      responses:
+        '200':
+          description: Liste paginée des paiements
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentPageResponse'
+
+  /api/payments/booking/{bookingId}:
+    get:
+      tags:
+        - Payments
+      summary: Consulter les paiements d'une réservation
+      operationId: getPaymentsByBooking
+      parameters:
+        - name: bookingId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Paiements de la réservation
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PaymentResponse'
+        '404':
+          description: Réservation ou paiement introuvable
+
+  /api/payments/{id}:
+    get:
+      tags:
+        - Payments
+      summary: Consulter un paiement
+      operationId: getPayment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Paiement trouvé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '404':
+          description: Paiement introuvable
+
+  /api/payments/{id}/simulate:
+    post:
+      tags:
+        - Payments
+      summary: Simuler un paiement
+      description: >
+        Opération réservée aux environnements de démonstration.
+        Cette fonctionnalité doit être désactivée en production.
+      operationId: simulatePayment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentSimulationRequest'
+      responses:
+        '200':
+          description: Simulation traitée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Données invalides
+        '403':
+          description: Simulation désactivée ou interdite
+        '404':
+          description: Paiement introuvable
+        '409':
+          description: Transition de statut impossible
+        '500':
+          description: Erreur interne
+
+  /api/payments/{id}/cancel:
+    post:
+      tags:
+        - Payments
+      summary: Annuler un paiement
+      description: >
+        Annuler une tentative de paiement lorsque son statut
+        autorise cette opération.
+      operationId: cancelPayment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentCancellationRequest'
+      responses:
+        '200':
+          description: Paiement annulé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentResponse'
+        '400':
+          description: Demande invalide
+        '404':
+          description: Paiement introuvable
+        '409':
+          description: Annulation impossible pour ce statut
+
+  /api/payments/{id}/refund:
+    post:
+      tags:
+        - Payments
+      summary: Demander un remboursement
+      description: >
+        Demander le remboursement total ou partiel d'un paiement réussi.
+        Le remboursement doit respecter le montant restant remboursable.
+        La clé d'idempotence est limitée à ce paiement et à l'opération de
+        remboursement, puis conservée pendant toute la durée de conservation
+        du remboursement associé. La même clé avec la même demande retourne
+        le même remboursement sans nouvel effet ; la même clé avec un montant
+        ou motif différent retourne 409. Des clés distinctes identifient des
+        demandes distinctes, chacune soumise au montant restant remboursable.
+      operationId: refundPayment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefundRequest'
+      responses:
+        '202':
+          description: Demande de remboursement acceptée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefundResponse'
+        '400':
+          description: Montant ou demande invalide
+        '404':
+          description: Paiement introuvable
+        '409':
+          description: >
+            La clé est réutilisée avec une demande différente, ou l'état du
+            paiement / le montant restant ne permet pas ce remboursement.
+            Un rejeu identique avec la même clé retourne le remboursement
+            associé sans nouvel effet.
+
+  /api/payments/webhooks/{provider}:
+    post:
+      tags:
+        - Webhooks
+      summary: Recevoir une notification du fournisseur
+      description: >
+        Recevoir un événement envoyé par un fournisseur de paiement.
+        La signature cryptographique devra être vérifiée côté serveur
+        et les événements devront être traités de manière idempotente. Un
+        événement valide dont l'identifiant fournisseur a déjà été traité
+        avec le même contenu reçoit un acquittement 2xx (200) sans nouvel
+        effet. Un identifiant déjà vu avec un contenu différent, ou une
+        transition métier réellement incompatible, est distinct d'un doublon
+        et reçoit 409. Le code d'acquittement doit être adapté aux exigences
+        du fournisseur effectivement intégré.
+      operationId: receivePaymentWebhook
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+          example: stripe
+        - name: X-Provider-Event-Id
+          in: header
+          required: true
+          description: Identifiant unique de l'événement fournisseur.
+          schema:
+            type: string
+        - name: X-Provider-Signature
+          in: header
+          required: true
+          description: Signature cryptographique du fournisseur.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentWebhookRequest'
+      responses:
+        '202':
+          description: Événement accepté pour traitement
+        '200':
+          description: >
+            Événement valide déjà traité avec le même identifiant et le même
+            contenu ; acquittement réussi sans nouvel effet.
+        '400':
+          description: Événement invalide
+        '404':
+          description: Paiement ou référence externe introuvable
+        '409':
+          description: >
+            Identifiant d'événement déjà associé à un contenu différent ou
+            transition métier réellement incompatible. Ce statut ne sert pas
+            à signaler un doublon valide déjà traité.
+
+components:
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: >
+        Clé opaque unique dans le périmètre de l'opération et conservée aussi
+        longtemps que la ressource créée par cette opération. Même clé et
+        même demande : retourner le résultat initial sans nouvel effet. Même
+        clé et demande différente : retourner 409. Pour POST /api/payments,
+        la portée est l'opération d'initiation du service ; pour un
+        remboursement, elle est limitée au paiement concerné. La clé ne doit
+        pas être réutilisée pour une nouvelle demande après un délai réseau.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+
+  schemas:
+
+    PaymentStatus:
+      type: string
+      enum:
+        - PENDING
+        - SUCCEEDED
+        - FAILED
+        - CANCELLED
+        - PARTIALLY_REFUNDED
+        - REFUNDED
+
+    PaymentInitiationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - bookingId
+      properties:
+        bookingId:
+          type: string
+          format: uuid
+          description: Identifiant de la réservation à payer.
+        provider:
+          type: string
+          description: Fournisseur de paiement demandé.
+          example: SIMULATED
+
+    PaymentSimulationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - outcome
+      properties:
+        outcome:
+          type: string
+          enum:
+            - SUCCESS
+            - FAILURE
+            - CANCELLED
+          description: Résultat demandé pour la simulation.
+
+    PaymentCancellationRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          example: Annulation demandée par le client.
+
+    RefundRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        amount:
+          type: number
+          exclusiveMinimum: 0
+          multipleOf: 0.01
+          description: >
+            Montant du remboursement. Si absent, remboursement total.
+        reason:
+          type: string
+          maxLength: 500
+          example: Réservation annulée.
+
+    PaymentWebhookRequest:
+      type: object
+      required:
+        - externalReference
+        - eventType
+      properties:
+        externalReference:
+          type: string
+          description: Référence de la transaction chez le fournisseur.
+        eventType:
+          type: string
+          example: PAYMENT_SUCCEEDED
+        status:
+          type: string
+          enum:
+            - SUCCEEDED
+            - FAILED
+            - CANCELLED
+        amount:
+          type: number
+          multipleOf: 0.01
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          example: MAD
+        occurredAt:
+          type: string
+          format: date-time
+
+    PaymentResponse:
+      type: object
+      required:
+        - id
+        - bookingId
+        - amount
+        - currency
+        - status
+        - provider
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        bookingId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          multipleOf: 0.01
+        currency:
+          type: string
+          example: MAD
+        status:
+          $ref: '#/components/schemas/PaymentStatus'
+        provider:
+          type: string
+          example: SIMULATED
+        externalReference:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    RefundResponse:
+      type: object
+      required:
+        - refundId
+        - paymentId
+        - amount
+        - currency
+        - status
+        - createdAt
+      properties:
+        refundId:
+          type: string
+          format: uuid
+        paymentId:
+          type: string
+          format: uuid
+        amount:
+          type: number
+          multipleOf: 0.01
+        currency:
+          type: string
+          example: MAD
+        status:
+          type: string
+          enum:
+            - PENDING
+            - SUCCEEDED
+            - FAILED
+        createdAt:
+          type: string
+          format: date-time
+
+    PaymentPageResponse:
+      type: object
+      required:
+        - content
+        - page
+        - size
+        - totalElements
+        - totalPages
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/PaymentResponse'
+        page:
+          type: integer
+          minimum: 0
+        size:
+          type: integer
+          minimum: 1
+        totalElements:
+          type: integer
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 0

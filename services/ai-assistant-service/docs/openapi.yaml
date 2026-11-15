@@ -1,0 +1,386 @@
+openapi: 3.0.3
+info:
+  title: TicketFlow — AI Assistant Service (proposition)
+  version: 0.1.0-draft
+  description: |
+    Contrat prévisionnel pour revue d'équipe, sans implémentation.
+    Tous les chemins, DTO internes, statuts et mécanismes de sécurité proposés
+    sont À VALIDER. Ils ne constituent pas des exigences définitives.
+    Le rôle Telegram–LLM–MCP provient de l'extrait du cahier des charges partagé ;
+    le cahier des charges intégral et les contrats Event/Booking/MCP sont absents
+    de cette branche. Aucun serveur, port, rôle ou outil MCP n'est fixé ici.
+    Les schémas Telegram sont des projections tolérantes de la Bot API,
+    distinctes des DTO internes proposés. Voir README.md et DESIGN.md.
+x-statut: a-valider
+x-decisions-a-valider:
+  - Chemins HTTP et nécessité de l'interface de dialogue hors Telegram.
+  - DTO internes, limite de texte, statuts, délais et politique de reprise.
+  - Traitement du webhook, déduplication et prise en charge avant acquittement.
+  - Identité TicketFlow, liaison Telegram et autorisation des ressources.
+  - Fournisseur LLM et contrats MCP ; aucune API sortante décrite ici.
+tags:
+  - name: Telegram
+    description: Réception proposée des mises à jour du bot.
+  - name: Dialogue
+    description: Interface HTTP facultative, à valider avant implémentation.
+paths:
+  /api/ai-assistant/telegram/webhook:
+    post:
+      tags: [Telegram]
+      operationId: recevoirMiseAJourTelegram
+      summary: Recevoir une mise à jour Telegram — à valider
+      x-statut: a-valider
+      description: |
+        Proposition de webhook HTTPS recevant un objet Update de la Bot API.
+        Le secret vérifie l'origine, pas les droits d'un compte TicketFlow.
+        Les champs supplémentaires et les mises à jour sans message texte
+        sont acceptés ; proposition de les ignorer avec 200 sans appel LLM.
+        Déduplication par bot et update_id à concevoir avant développement.
+        L'acquittement est distinct de l'envoi de la réponse via la Bot API.
+        Valider son moment exact et une prise en charge durable si le
+        traitement est différé. Un 200 ne garantit pas l'envoi de la réponse.
+        Telegram relivre après une réponse hors 2xx ; tenir compte des
+        doublons et ne pas réexécuter aveuglément une action à effet de bord.
+      security:
+        - SecretWebhookTelegram: []
+      requestBody:
+        required: true
+        description: Projection de Update ; message et text ne sont pas obligatoires.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TelegramUpdate'
+            examples:
+              messageTexte:
+                summary: Message illustratif, sans données métier promises
+                value:
+                  update_id: 10001
+                  message:
+                    message_id: 12
+                    date: 1794096000
+                    chat:
+                      id: 123456789
+                      type: private
+                    text: Quels événements sont disponibles ?
+              autreMiseAJour:
+                summary: Type non pris en charge dans cette proposition
+                value:
+                  update_id: 10002
+                  edited_message:
+                    message_id: 12
+                    date: 1794096000
+                    chat:
+                      id: 123456789
+                      type: private
+                    text: Message modifié
+      responses:
+        '200':
+          description: |
+            Mise à jour traitée, déjà prise en charge ou volontairement ignorée.
+            Acquittement sans corps ; aucune réponse conversationnelle incluse.
+            Les garanties exactes de prise en charge sont à valider.
+        '400':
+          $ref: '#/components/responses/RequeteInvalide'
+        '403':
+          $ref: '#/components/responses/OrigineTelegramRefusee'
+        '415':
+          $ref: '#/components/responses/ContenuNonPrisEnCharge'
+        '429':
+          $ref: '#/components/responses/LimiteAtteinte'
+        '500':
+          $ref: '#/components/responses/ErreurInterne'
+        '503':
+          $ref: '#/components/responses/ServiceIndisponible'
+  /api/ai-assistant/chat:
+    post:
+      tags: [Dialogue]
+      operationId: dialoguerAvecAssistant
+      summary: Dialoguer par HTTP — interface facultative à valider
+      x-statut: a-valider
+      x-facultatif: true
+      description: |
+        Proposition d'échange synchrone indépendant de Telegram, pour les
+        essais ou une intégration à confirmer. Aucun message Telegram envoyé,
+        aucune conversation persistante ni mémoire promises.
+        Un jeton Bearer validé est proposé : émetteur, audience et droits
+        restent à convenir. Ne pas déduire l'identité d'un identifiant de
+        client librement fourni. Les données privées nécessitent une
+        autorisation vérifiée par MCP et les API métier.
+      security:
+        - JetonTicketFlow: []
+      requestBody:
+        required: true
+        description: Message isolé ; limite de longueur interne proposée, à valider.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DialogueRequest'
+            example:
+              message: Comment rechercher un événement ?
+      responses:
+        '200':
+          description: Réponse produite pour cet échange, sans garantie d'action métier.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DialogueResponse'
+              example:
+                reply: Vous pouvez préciser une ville ou une date pour formuler votre recherche.
+        '400':
+          $ref: '#/components/responses/RequeteInvalide'
+        '401':
+          $ref: '#/components/responses/AuthentificationInvalide'
+        '403':
+          $ref: '#/components/responses/AccesRefuse'
+        '415':
+          $ref: '#/components/responses/ContenuNonPrisEnCharge'
+        '429':
+          $ref: '#/components/responses/LimiteAtteinte'
+        '500':
+          $ref: '#/components/responses/ErreurInterne'
+        '502':
+          $ref: '#/components/responses/ErreurAmont'
+        '503':
+          $ref: '#/components/responses/ServiceIndisponible'
+        '504':
+          $ref: '#/components/responses/DelaiAmontDepasse'
+components:
+  securitySchemes:
+    SecretWebhookTelegram:
+      type: apiKey
+      in: header
+      name: X-Telegram-Bot-Api-Secret-Token
+      description: |
+        Mécanisme de la Bot API proposé pour ce service, à valider.
+        Secret externalisé configuré avec setWebhook ; aucun secret réel fourni.
+        Ne remplace pas l'identité et les droits TicketFlow.
+    JetonTicketFlow:
+      type: http
+      scheme: bearer
+      description: |
+        Protection proposée pour le dialogue HTTP uniquement, à valider.
+        Keycloak figure dans la feuille de route ; format, émetteur, audience,
+        droits et propagation restent à définir. Aucun rôle ou scope imposé.
+  schemas:
+    TelegramUpdate:
+      type: object
+      description: |
+        Projection de l'objet Update officiel. Les autres types de mises à jour
+        et les propriétés supplémentaires restent acceptés. Ce schéma n'est
+        pas une reproduction complète de la Bot API.
+      required: [update_id]
+      additionalProperties: true
+      properties:
+        update_id:
+          type: integer
+          format: int64
+          description: Identifiant de mise à jour Telegram, utile à la déduplication.
+        message:
+          $ref: '#/components/schemas/TelegramMessage'
+    TelegramMessage:
+      type: object
+      description: Projection d'un message ; un message peut ne pas contenir de texte.
+      required: [message_id, date, chat]
+      additionalProperties: true
+      properties:
+        message_id:
+          type: integer
+          format: int64
+        date:
+          type: integer
+          format: int64
+          description: Date d'envoi Unix en secondes, selon la Bot API.
+        chat:
+          $ref: '#/components/schemas/TelegramChat'
+        text:
+          type: string
+          description: Texte facultatif ; médias et autres messages hors périmètre initial proposé.
+    TelegramChat:
+      type: object
+      description: Contexte Telegram ; id ne désigne pas un client TicketFlow.
+      required: [id, type]
+      additionalProperties: true
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Identifiant Telegram signé ; peut dépasser 32 bits.
+        type:
+          type: string
+          description: Type Telegram conservé sans enum fermée dans cette projection.
+    DialogueRequest:
+      type: object
+      description: DTO interne proposé, à valider ; aucun identifiant client accepté.
+      required: [message]
+      additionalProperties: false
+      properties:
+        message:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          pattern: '\S'
+          description: |
+            Texte comportant au moins un caractère non blanc. Limite interne
+            de 4 000 caractères proposée ; ce n'est pas une limite Telegram.
+    DialogueResponse:
+      type: object
+      description: DTO interne proposé, à valider ; pas de données métier structurées inventées.
+      required: [reply]
+      additionalProperties: false
+      properties:
+        reply:
+          type: string
+          minLength: 1
+          description: Réponse conversationnelle ; ne constitue pas une confirmation de paiement ou réservation.
+    Problem:
+      type: object
+      description: |
+        Format d'erreur proposé selon ProblemDetail/RFC 9457, cohérent avec
+        Customer Service. Contraintes de ce DTO assistant à valider.
+        Aucun secret, trace technique ou contenu brut du fournisseur dans detail.
+      required: [type, title, status]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          example: about:blank
+        title:
+          type: string
+          example: Requête invalide
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+          description: Doit correspondre au statut HTTP retourné.
+          example: 400
+        detail:
+          type: string
+          example: Le message doit contenir du texte.
+        instance:
+          type: string
+          format: uri-reference
+          description: Référence facultative de l'occurrence, sans donnée sensible.
+  responses:
+    RequeteInvalide:
+      description: JSON invalide ou champs non conformes au schéma proposé (400).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Requête invalide
+            status: 400
+            detail: Le corps de la requête ne respecte pas le schéma attendu.
+    OrigineTelegramRefusee:
+      description: Secret du webhook Telegram absent ou invalide (403), choix à valider.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Origine refusée
+            status: 403
+            detail: La mise à jour ne peut pas être acceptée.
+    AuthentificationInvalide:
+      description: Jeton Bearer absent ou invalide (401).
+      headers:
+        WWW-Authenticate:
+          description: Challenge Bearer requis pour la réponse 401 du dialogue HTTP.
+          schema:
+            type: string
+          example: Bearer
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Authentification requise
+            status: 401
+            detail: Les informations d'authentification sont absentes ou invalides.
+    AccesRefuse:
+      description: Identité authentifiée mais opération ou ressource interdite (403).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Accès refusé
+            status: 403
+            detail: Cette demande ne peut pas être exécutée avec les droits actuels.
+    ContenuNonPrisEnCharge:
+      description: Type de contenu différent de application/json (415).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Type de contenu non pris en charge
+            status: 415
+            detail: Un corps JSON est attendu.
+    LimiteAtteinte:
+      description: Limite d'appels atteinte ; seuils et reprise à valider (429).
+      headers:
+        Retry-After:
+          description: Délai facultatif en secondes si connu ; présence à valider.
+          schema:
+            type: integer
+            minimum: 0
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Trop de requêtes
+            status: 429
+            detail: La limite d'appels est atteinte.
+    ErreurInterne:
+      description: Erreur interne sans détail sensible (500).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Erreur interne
+            status: 500
+            detail: La demande n'a pas pu être traitée.
+    ErreurAmont:
+      description: Échec technique ou réponse inexploitable du LLM ou de MCP (502).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Échec d'une dépendance
+            status: 502
+            detail: Une dépendance n'a pas fourni de réponse exploitable.
+    ServiceIndisponible:
+      description: Service temporairement incapable de prendre en charge la demande (503).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Service indisponible
+            status: 503
+            detail: La demande ne peut pas être prise en charge actuellement.
+    DelaiAmontDepasse:
+      description: Délai d'attente du LLM ou de MCP dépassé ; seuil à valider (504).
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: about:blank
+            title: Délai dépassé
+            status: 504
+            detail: Une dépendance n'a pas répondu dans le délai prévu.

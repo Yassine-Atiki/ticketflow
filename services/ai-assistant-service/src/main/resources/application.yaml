@@ -1,0 +1,13 @@
+spring:
+  application:
+    name: ai-assistant-service
+  config:
+    import: "configserver:http://localhost:8888"
+  cloud:
+    config:
+      label: main
+
+springdoc:
+  swagger-ui:
+    url: /openapi.yaml
+    supported-submit-methods: []
