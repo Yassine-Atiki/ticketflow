@@ -116,9 +116,10 @@ et un listener contrôleur séparé. La version Kafka retenue et la personne cha
 du fichier partagé ne sont pas précisées dans cet échange. Aligner ensuite les
 bootstrap-servers dans la configuration centralisée selon le mode de lancement.
 
-Le fichier partagé `infra/docker-compose.yml` et le dépôt de configuration ne sont
-pas modifiés dans ce correctif limité à Event Service. La mise en œuvre de la
-configuration Kafka commune et son démarrage restent à finaliser.
+Le fichier partagé `infra/docker-compose.yml` utilise désormais Kafka 3.9.0,
+comme la branche Booking consultée, avec ces deux listeners clients. Le dépôt
+de configuration reste inchangé ; pour Event conteneurisé, fournir
+`SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:29092`.
 
 ## Vérifications du correctif
 
@@ -126,11 +127,36 @@ configuration Kafka commune et son démarrage restent à finaliser.
   2 tests réussis (contexte H2 et accès HTTP Swagger UI / contrat OpenAPI),
   sans Config Server, PostgreSQL, Eureka ou Kafka externes.
 - Contrat YAML chargé et références locales résolues ; `git diff --check` réussi.
-- Tentative de démarrage du Config Server existant : échec du clonage du dépôt
-  `ticketflow-config`, authentification Git requise par JGit sans CredentialsProvider.
-  Aucun secret ni modification du Config Server ajouté dans ce correctif.
-- Docker est arrêté sur le poste ; PostgreSQL Compose n'est donc pas disponible.
-  Le démarrage normal Event, la récupération réelle des paramètres distants et
-  Swagger dans ce mode restent à confirmer après résolution de ces prérequis.
+- Config Server vérifié sur 18888 avec son backend Git pointant vers le dépôt local
+  `ticketflow-config` (label main), sans ajout de secret. L'accès GitHub direct de
+  JGit demande toujours une authentification ; le dépôt local sert au lancement local.
+- Event démarré sur 18082 : récupération de configuration confirmée dans les logs,
+  connexion PostgreSQL 17 / event_db avec ddl-auto=validate. Eureka désactivé pour
+  cette vérification ; aucun endpoint métier n'est encore implémenté.
+- Pour reproduire depuis la racine, dans deux terminaux PowerShell :
+
+  ```powershell
+  .\mvnw.cmd -pl services/config-server spring-boot:run '-Dspring-boot.run.arguments=--server.port=18888 --spring.cloud.config.server.git.uri=file:///C:/Users/PC/OneDrive/Bureau/ProjetSpringTicketFlow/ticketflow-config'
+  .\mvnw.cmd -pl services/event-service spring-boot:run '-Dspring-boot.run.arguments=--CONFIG_SERVER_URL=http://localhost:18888 --server.port=18082 --eureka.client.enabled=false'
+  ```
+
+  Adapter le chemin du dépôt Git local au poste. `CONFIG_SERVER_URL` conserve par
+  défaut `http://localhost:8888` ; l'import Config Server reste obligatoire.
 - Les tests valident le squelette et la disponibilité de Swagger ; ils ne prouvent
   pas les garanties métier documentées, dont l'implémentation est prévue ultérieurement.
+
+### Résultat de la vérification de lancement local
+
+- Config Server Git local sur 18888 : source `event-service.yml`, label `main`,
+  chargée par Event (log `Located environment`). PostgreSQL 17 connecté sur event_db.
+- Event sur 18082 : `/actuator/health` HTTP 200 / UP ; `/swagger-ui.html`,
+  `/openapi.yml` et `/v3/api-docs/swagger-config` HTTP 200. Swagger configure bien
+  `url: /openapi.yml`. Aucun endpoint métier n'a été développé pour ce correctif.
+- Maven verify relancé après le bootstrap paramétrable : BUILD SUCCESS, 2 tests,
+  aucun échec ni test ignoré.
+- Compose validé ; Kafka 3.9.0 et PostgreSQL démarrés. Les deux listeners sont
+  configurés sur le même broker ; aucune nouvelle instance Kafka n'est ajoutée.
+
+- Kafka vérifié après correction du listener contrôleur : AdminClient
+  `kafka-topics.sh --bootstrap-server kafka:29092 --list` réussi dans le conteneur ;
+  requête de métadonnées depuis l'hôte sur 127.0.0.1:9092 réussie, annonce localhost.
