@@ -270,13 +270,26 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
-  /api/v1/internal/events/{id}/tiers/{tierId}/reserve:
+  /api/v1/internal/events/{id}/capacity/reservations:
     post:
       tags: [Internal]
-      summary: Réserver de la capacité (appel Booking Service)
+      operationId: reserveCapacity
+      summary: Réserver atomiquement la capacité pour un Booking
+      description: |
+        Toutes les lignes concernent le même événement. Chaque ticketTierId doit être
+        distinct (doublon = 400) et appartenir à cet événement (sinon 404).
+        Si une seule ligne manque de places, 409 INSUFFICIENT_CAPACITY et aucune
+        modification du stock ni enregistrement de réservation, pour toutes les lignes.
+        La clé de déduplication persistante globale est bookingId seul.
+        L'empreinte comparée est l'événement et l'ensemble des couples
+        (ticketTierId, quantity), indépendamment de l'ordre des lignes.
+        Premier succès = 201. Rejeu identique encore RESERVED = 200 avec la réponse
+        initiale enregistrée, sans nouvelle décrémentation. Même bookingId avec des
+        données différentes, ou déjà RELEASED = 409 IDEMPOTENCY_CONFLICT.
+        Les détails de rejeu et de réponse sont confirmés avec Booking
+        selon le retour du responsable Event ; leur implémentation reste à développer.
       parameters:
         - $ref: '#/components/parameters/EventId'
-        - $ref: '#/components/parameters/TierId'
       requestBody:
         required: true
         content:
@@ -284,36 +297,67 @@ paths:
             schema:
               $ref: '#/components/schemas/CapacityRequest'
       responses:
-        '200':
-          description: Capacité réservée
+        '201':
+          description: Capacité réservée pour toutes les lignes
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CapacityResponse'
+        '200':
+          description: Rejeu identique ; réponse de réservation initiale sans effet supplémentaire
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapacityResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
-        '409': { $ref: '#/components/responses/Conflict' }
+        '409':
+          description: INSUFFICIENT_CAPACITY ou IDEMPOTENCY_CONFLICT ; aucune modification
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '422':
+          description: EVENT_NOT_BOOKABLE (événement non publié, fermé ou annulé)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
-  /api/v1/internal/events/{id}/tiers/{tierId}/release:
-    post:
+  /api/v1/internal/events/{id}/capacity/reservations/{bookingId}:
+    delete:
       tags: [Internal]
-      summary: Libérer de la capacité (appel Booking Service)
+      operationId: releaseCapacity
+      summary: Libérer atomiquement toutes les lignes du Booking
+      description: |
+        Sans corps : les quantités et catégories sont retrouvées dans la réservation
+        persistée. Aucune libération partielle. La libération reste possible même
+        si l'événement est fermé ou annulé.
+        Premier succès = 200. Rejeu identique = 200 avec la réponse de libération
+        initiale enregistrée, sans restituer les places une deuxième fois.
+        bookingId inconnu = 404. bookingId connu pour un autre événement = 409
+        IDEMPOTENCY_CONFLICT (libération contradictoire), sans effet sur le stock.
+        Ces détails sont confirmés avec Booking selon le retour du responsable Event.
+        Leur implémentation reste à développer.
       parameters:
         - $ref: '#/components/parameters/EventId'
-        - $ref: '#/components/parameters/TierId'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CapacityRequest'
+        - $ref: '#/components/parameters/BookingId'
       responses:
         '200':
-          description: Capacité libérée
+          description: Toutes les lignes libérées ou réponse initiale de libération rejouée
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/CapacityResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Libération contradictoire (bookingId associé à un autre événement)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
 components:
   securitySchemes:
@@ -327,12 +371,18 @@ components:
       name: id
       in: path
       required: true
-      schema: { type: integer, format: int64 }
+      schema: { type: string, format: uuid }
     TierId:
       name: tierId
       in: path
       required: true
-      schema: { type: integer, format: int64 }
+      schema: { type: string, format: uuid }
+    BookingId:
+      name: bookingId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
 
   responses:
     BadRequest:
@@ -383,7 +433,7 @@ components:
     TicketTierResponse:
       type: object
       properties:
-        id: { type: integer, format: int64 }
+        id: { type: string, format: uuid }
         name: { type: string }
         price: { type: number }
         currency: { type: string }
@@ -419,7 +469,7 @@ components:
     EventResponse:
       type: object
       properties:
-        id: { type: integer, format: int64 }
+        id: { type: string, format: uuid }
         title: { type: string }
         description: { type: string }
         category: { $ref: '#/components/schemas/CategoryResponse' }
@@ -435,7 +485,7 @@ components:
     EventSummaryResponse:
       type: object
       properties:
-        id: { type: integer, format: int64 }
+        id: { type: string, format: uuid }
         title: { type: string }
         city: { type: string }
         startDate: { type: string, format: date-time }
@@ -486,24 +536,52 @@ components:
         capacity: { type: integer }
 
 
+    CapacityLine:
+      type: object
+      additionalProperties: false
+      required: [ticketTierId, quantity]
+      properties:
+        ticketTierId: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1, example: 2 }
+
     CapacityRequest:
       type: object
-      required: [ bookingId, quantity ]
+      additionalProperties: false
+      required: [bookingId, lines]
       properties:
         bookingId:
           type: string
           format: uuid
-          description: Identifiant unique de la réservation Booking
-        quantity:
-          type: integer
-          minimum: 1
-          example: 2
+          description: Clé de déduplication globale pour toutes les lignes du Booking
+        lines:
+          type: array
+          minItems: 1
+          description: Catégories de billets distinctes appartenant au même événement
+          items: { $ref: '#/components/schemas/CapacityLine' }
+      example:
+        bookingId: b3e1f9a0-1c2d-4e5f-8a9b-0c1d2e3f4a5b
+        lines:
+          - ticketTierId: f1e2d3c4-b5a6-4978-8695-a4b3c2d1e0f9
+            quantity: 2
 
     CapacityResponse:
       type: object
+      description: Réponse persistée ; les capacités sont un instantané de l'opération initiale, pas le stock actuel lors d'un rejeu
+      required: [bookingId, eventId, status, lines]
       properties:
-        tierId: { type: integer, format: int64 }
-        availableCapacity: { type: integer }
+        bookingId: { type: string, format: uuid }
+        eventId: { type: string, format: uuid }
+        status: { type: string, enum: [RESERVED, RELEASED] }
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [ticketTierId, quantity, availableCapacity]
+            properties:
+              ticketTierId: { type: string, format: uuid }
+              quantity: { type: integer, minimum: 1 }
+              availableCapacity: { type: integer, minimum: 0 }
 
     ErrorResponse:
       type: object
