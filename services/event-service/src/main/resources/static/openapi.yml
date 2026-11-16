@@ -10,13 +10,17 @@ info:
     Les endpoints métier sont documentés mais ne sont pas encore implémentés.
     Les opérations de réservation et de libération de capacité
     seront développées ultérieurement.
+    Le frontend utilise les API publiques via la Gateway sur le port 8080.
+    Les opérations /api/v1/internal/events/** utilisent exclusivement l'accès
+    direct à Event Service (Booking via OpenFeign et Eureka), sans passer par
+    la Gateway. Leur protection côté Event Service sera implémentée avec les endpoints.
   version: 1.0.0
 
 servers:
   - url: http://localhost:8080
-    description: Via API Gateway
+    description: API publiques via API Gateway (frontend)
   - url: http://localhost:8082
-    description: Direct
+    description: Accès direct en développement et appels internes (Booking via OpenFeign/Eureka)
 
 tags:
   - name: Events
@@ -273,6 +277,9 @@ paths:
   /api/v1/internal/events/{id}/capacity/reservations:
     post:
       tags: [Internal]
+      servers:
+        - url: http://localhost:8082
+          description: Accès direct uniquement pour les échanges internes
       operationId: reserveCapacity
       summary: Réserver atomiquement la capacité pour un Booking
       description: |
@@ -327,6 +334,9 @@ paths:
   /api/v1/internal/events/{id}/capacity/reservations/{bookingId}:
     delete:
       tags: [Internal]
+      servers:
+        - url: http://localhost:8082
+          description: Accès direct uniquement pour les échanges internes
       operationId: releaseCapacity
       summary: Libérer atomiquement toutes les lignes du Booking
       description: |

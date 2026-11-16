@@ -160,3 +160,26 @@ de configuration reste inchangé ; pour Event conteneurisé, fournir
 - Kafka vérifié après correction du listener contrôleur : AdminClient
   `kafka-topics.sh --bootstrap-server kafka:29092 --list` réussi dans le conteneur ;
   requête de métadonnées depuis l'hôte sur 127.0.0.1:9092 réussie, annonce localhost.
+
+## API publiques via Gateway et échanges internes
+
+- Frontend : Gateway 8080, route centrale `event-service` vers `lb://event-service`,
+  uniquement `/api/v1/events/**`, `/api/v1/categories/**`, `/api/v1/venues/**`.
+  Les routes existantes sont conservées et le filtre ajoute X-Served-By: api-gateway.
+- Booking : accès direct via OpenFeign et Eureka à Event Service ; les chemins
+  `/api/v1/internal/events/**` ne sont pas routés par cette route publique.
+- Swagger conserve 8080 pour les API publiques et 8082 pour le développement et
+  les appels internes. Les opérations internes surchargent la liste des serveurs
+  pour sélectionner uniquement 8082. Leur protection côté Event reste à implémenter.
+- Les appels métier via 8080 seront validés lorsque les contrôleurs existeront ;
+  leur absence ne permet pas encore de démontrer une réservation via la Gateway.
+
+Vérification locale de cette correction : Event enregistré UP dans Eureka sur
+8082 ; Gateway redémarrée sur 8080, `/actuator/gateway/routes` confirme la route
+`event-service`, `lb://event-service`, ses trois prédicats publics et le filtre
+X-Served-By. Les routes customer, payment et ticket sont conservées. Le Swagger
+YAML a été chargé et ses références locales résolues ; `/openapi.yml` répond 200.
+Cette vérification utilise Config Server sur 18888 en profil native avec le dépôt
+local ticketflow-config et un bootstrap Gateway temporaire hors dépôt. Aucun code
+Gateway/Eureka n'est modifié. Le déploiement Git distant de la configuration reste
+nécessaire pour reproduire le chargement hors de ce poste.
