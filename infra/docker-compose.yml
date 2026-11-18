@@ -6,6 +6,26 @@ services:
     container_name: customer-service
     ports:
       - "127.0.0.1:8081:8081"
+  booking-service:
+    build:
+      context: ..
+      dockerfile: services/booking-service/Dockerfile
+    container_name: booking-service
+    ports:
+      - "127.0.0.1:8083:8083"
+    environment:
+      CONFIG_SERVER_URL: http://host.docker.internal:8888
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/booking_db
+      SPRING_APPLICATION_JSON: '{"eureka":{"client":{"service-url":{"defaultZone":"http://host.docker.internal:8761/eureka/"}}}}'
+      BOOKING_DB_USER: booking_user
+      BOOKING_DB_PASSWORD: booking_dev
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
   postgres:
     image: postgres:17
     container_name: ticketflow-postgres
@@ -46,6 +66,12 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:29092"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
 
 volumes:
   postgres_data:

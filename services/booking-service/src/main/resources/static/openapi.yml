@@ -1,0 +1,385 @@
+openapi: 3.0.3
+info:
+  title: TicketFlow - Booking Service API
+  description: |
+    API de gestion des réservations de TicketFlow.
+    L'identité du client est toujours déduite du jeton JWT, jamais du corps ou des paramètres de la requête.
+  version: 0.1.0
+servers:
+  - url: http://localhost:8080
+    description: Via l'API Gateway (port à confirmer)
+tags:
+  - name: Bookings
+    description: Création, consultation et annulation des réservations
+
+security:
+  - bearerAuth: []
+
+paths:
+  /api/v1/bookings:
+    post:
+      tags: [Bookings]
+      summary: Créer une réservation
+      description: |
+        Crée une réservation au statut `PENDING_PAYMENT` avec une durée de retenue limitée.
+        La capacité est réservée de façon atomique et le prix est figé.
+        L'en-tête `Idempotency-Key` garantit qu'un rejeu de la même requête ne crée pas de doublon.
+      operationId: createBooking
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Clé unique générée par le client (ex. UUID) pour cette demande.
+          schema:
+            type: string
+            maxLength: 100
+            example: 3f8e6c1a-2b4d-4c7e-9a10-5d6e7f8a9b0c
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookingRequest'
+      responses:
+        '201':
+          description: Réservation créée
+          headers:
+            Location:
+              description: URL de la réservation créée
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '200':
+          description: Requête déjà traitée (même `Idempotency-Key` et même corps) ; la réservation existante est renvoyée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Stock insuffisant (`INSUFFICIENT_CAPACITY`) ou conflit d'idempotence (`IDEMPOTENCY_CONFLICT`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                stock:
+                  summary: Stock insuffisant
+                  value:
+                    code: INSUFFICIENT_CAPACITY
+                    message: Il ne reste pas assez de places pour la catégorie demandée.
+                    timestamp: '2026-11-11T10:15:30Z'
+                    path: /api/v1/bookings
+        '422':
+          description: Règle de vente non respectée (`EVENT_NOT_BOOKABLE`, `QUANTITY_LIMIT_EXCEEDED`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+
+  /api/v1/bookings/{id}:
+    get:
+      tags: [Bookings]
+      summary: Consulter une réservation
+      description: Retourne le détail d'une réservation. Réservé à son propriétaire.
+      operationId: getBooking
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      responses:
+        '200':
+          description: Détail de la réservation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/me/bookings:
+    get:
+      tags: [Bookings]
+      summary: Lister mes réservations
+      description: Retourne les réservations du client authentifié, paginées, de la plus récente à la plus ancienne.
+      operationId: listMyBookings
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Filtre facultatif sur le statut
+          schema:
+            $ref: '#/components/schemas/BookingStatus'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        '200':
+          description: Page de réservations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/bookings/{id}/cancel:
+    post:
+      tags: [Bookings]
+      summary: Annuler une réservation
+      description: |
+        Annule une réservation selon la politique en vigueur.
+        Autorisé depuis `PENDING_PAYMENT` et, selon la politique, depuis `CONFIRMED`.
+        La capacité est restituée.
+      operationId: cancelBooking
+      parameters:
+        - $ref: '#/components/parameters/BookingId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelBookingRequest'
+      responses:
+        '200':
+          description: Réservation annulée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Transition interdite (`INVALID_STATE_TRANSITION`), ex. réservation déjà expirée ou annulée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    BookingId:
+      name: id
+      in: path
+      required: true
+      description: Identifiant de la réservation
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    BookingStatus:
+      type: string
+      enum: [PENDING_PAYMENT, CONFIRMED, EXPIRED, CANCELLED]
+
+    CreateBookingRequest:
+      type: object
+      required: [eventId, lines]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        lines:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/BookingLineRequest'
+      example:
+        eventId: e4f5a6b7-c8d9-4e0f-a1b2-c3d4e5f6a7b8
+        lines:
+          - ticketTierId: f1e2d3c4-b5a6-4978-8695-a4b3c2d1e0f9
+            quantity: 2
+
+    BookingLineRequest:
+      type: object
+      required: [ticketTierId, quantity]
+      properties:
+        ticketTierId:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: Limite par commande configurable (défaut 10)
+
+    CancelBookingRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 255
+
+    BookingLineResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        ticketTierId:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+        unitPrice:
+          type: number
+          format: decimal
+          description: Prix unitaire figé à la création
+        lineTotal:
+          type: number
+          format: decimal
+
+    BookingResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        eventId:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/BookingStatus'
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookingLineResponse'
+        totalAmount:
+          type: number
+          format: decimal
+        currency:
+          type: string
+          example: MAD
+        expiresAt:
+          type: string
+          format: date-time
+          description: Échéance de la retenue (statut `PENDING_PAYMENT`)
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      example:
+        id: b3e1f9a0-1c2d-4e5f-8a9b-0c1d2e3f4a5b
+        eventId: e4f5a6b7-c8d9-4e0f-a1b2-c3d4e5f6a7b8
+        status: PENDING_PAYMENT
+        lines:
+          - id: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+            ticketTierId: f1e2d3c4-b5a6-4978-8695-a4b3c2d1e0f9
+            quantity: 2
+            unitPrice: 150.00
+            lineTotal: 300.00
+        totalAmount: 300.00
+        currency: MAD
+        expiresAt: '2026-11-11T10:30:30Z'
+        createdAt: '2026-11-11T10:15:30Z'
+        updatedAt: '2026-11-11T10:15:30Z'
+
+    BookingPage:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookingResponse'
+        page:
+          type: integer
+        size:
+          type: integer
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      required: [code, message, timestamp, path]
+      properties:
+        code:
+          type: string
+          example: INSUFFICIENT_CAPACITY
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        path:
+          type: string
+        details:
+          type: array
+          description: Détails des erreurs de validation
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+
+  responses:
+    BadRequest:
+      description: Requête invalide (`VALIDATION_ERROR`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Jeton absent ou invalide
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: La réservation appartient à un autre client
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Ressource introuvable (`BOOKING_NOT_FOUND`, `EVENT_NOT_FOUND`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Service dépendant indisponible (`DEPENDENCY_UNAVAILABLE`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
