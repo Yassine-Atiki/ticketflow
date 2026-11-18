@@ -36,7 +36,7 @@ Il gère le cycle de vie des réservations : création, contrôle de disponibili
 
 | Domaine | Technologie |
 |---|---|
-| Langage | Java (17 actuellement dans le `pom.xml`, cible 21 selon le cahier des charges) |
+| Langage | Java 21 |
 | Framework | Spring Boot 4.x, Spring Cloud |
 | Persistance | Spring Data JPA, PostgreSQL 17 (`booking_db`) |
 | Migrations | Flyway |
@@ -63,48 +63,53 @@ Il gère le cycle de vie des réservations : création, contrôle de disponibili
 ## 5. Configuration et lancement
 
 ### Prérequis
-- JDK 17 ou 21, Maven
-- Docker Desktop (pour PostgreSQL)
-- Config Server et Eureka démarrés (sinon voir le profil `dev`)
 
-### Base de données
-```bash
-# depuis la racine du dépôt ticketflow
-docker compose -f infra/docker-compose.yml up -d postgres
-```
-- Hôte : `127.0.0.1`, port : `5433`
-- Base : `booking_db`
-- Utilisateur / mot de passe : identifiants dédiés au service (fournis par l'infra, **jamais committés**)
+Depuis la racine du dépôt, démarrer PostgreSQL et Kafka avec Docker Desktop.
 
-### Variables d'environnement
-
-| Variable | Description | Exemple |
-|---|---|---|
-| `BOOKING_DB_USER` | Utilisateur PostgreSQL du service | *(à définir)* |
-| `BOOKING_DB_PASSWORD` | Mot de passe PostgreSQL | *(secret, hors Git)* |
-| `KAFKA_BOOTSTRAP_SERVERS` | Adresse Kafka | `localhost:9092` |
-| `EUREKA_URL` | Adresse Eureka | `http://localhost:8761/eureka` |
-
-### Configuration externalisée
-Les paramètres non secrets sont dans le dépôt `ticketflow-config`, fichier `booking-service.yml` (port, URL de base, durée de retenue, limite par commande, etc.).
-
-| Paramètre | Valeur par défaut proposée |
-|---|---|
-| `server.port` | À confirmer avec l'équipe |
-| `booking.hold-duration` | `PT15M` (15 minutes) |
-| `booking.max-quantity-per-order` | `10` |
-
-### Lancement
-```bash
-cd services/booking-service
-mvn spring-boot:run
+```powershell
+docker compose -f infra/docker-compose.yml up -d --wait postgres kafka
 ```
 
-### Accès
-- Swagger UI : `http://localhost:<port>/swagger-ui.html`
-- Spécification : `http://localhost:<port>/v3/api-docs`
-- Santé : `http://localhost:<port>/actuator/health`
-- Via le Gateway : `http://localhost:<port-gateway>/api/v1/bookings`
+Démarrer Eureka et Config Server depuis IntelliJ, ou lancer les commandes suivantes dans deux terminaux séparés avec le JDK 21.
+
+```powershell
+.\mvnw.cmd -pl services/discovery-server spring-boot:run
+.\mvnw.cmd -pl services/config-server spring-boot:run
+```
+
+Si le dépôt de configuration requiert une authentification, fournir au processus Config Server les variables `SPRING_CLOUD_CONFIG_SERVER_GIT_USERNAME` et `SPRING_CLOUD_CONFIG_SERVER_GIT_PASSWORD` avec des identifiants GitHub autorisés.
+
+Config Server charge les paramètres de Booking depuis `booking-service.yml`, sur la branche `main` de `ticketflow-config`. Vérifier que `http://localhost:8888/booking-service/default` renvoie ce fichier dans `propertySources` avant de lancer Booking.
+
+### Lancement depuis IntelliJ ou Maven
+
+Configurer `BOOKING_DB_USER` et `BOOKING_DB_PASSWORD` avec les identifiants de la base de développement créée par Compose. Depuis IntelliJ, exécuter `BookingServiceApplication` avec ces variables et le JDK 21. En terminal, définir les mêmes variables dans la session puis lancer le service depuis la racine.
+
+```powershell
+.\mvnw.cmd -pl services/booking-service spring-boot:run
+```
+
+L'import Config Server est obligatoire. `CONFIG_SERVER_URL` vaut par défaut `http://localhost:8888`. La configuration distante utilise PostgreSQL sur `127.0.0.1:5433`, Kafka sur `localhost:9092` et Eureka sur `localhost:8761`.
+
+### Lancement de Booking dans Docker
+
+Laisser Config Server et Eureka démarrés sur l'hôte. Compose les joint via `host.docker.internal` et utilise les noms de services `postgres` et `kafka` pour les connexions internes.
+
+```powershell
+docker compose -f infra/docker-compose.yml up -d --build booking-service
+```
+
+### Vérifications
+
+- Santé de Booking sur `http://localhost:8083/actuator/health`.
+- Instance `BOOKING-SERVICE` au statut `UP` sur `http://localhost:8761/eureka/apps/BOOKING-SERVICE`.
+- Swagger UI sur `http://localhost:8083/swagger-ui/index.html` et contrat statique sur `http://localhost:8083/openapi.yml`.
+
+Le test de démarrage tourne avec H2 en mémoire et sans Config Server, Eureka ou Kafka.
+
+```powershell
+.\mvnw.cmd -B -ntp -pl services/booking-service -am verify
+```
 
 ## 6. API (résumé)
 
@@ -119,7 +124,7 @@ Contrat complet : [openapi.yml](openapi.yml).
 
 ## 7. Documentation associée
 
-- [DESIGN.md](DESIGN.md) : conception technique
+- [DESIGN.md](DESIGN.md) : conception technique détaillée
 - [openapi.yml](openapi.yml) : contrat OpenAPI
 
 ## 8. Règles de contribution

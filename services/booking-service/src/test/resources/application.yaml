@@ -1,0 +1,36 @@
+spring:
+  application:
+    name: booking-service
+  # Désactiver Config Server pour les tests
+  cloud:
+    config:
+      enabled: false
+  config:
+    import: ""
+  # H2 en mémoire — pas de PostgreSQL requis
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    database-platform: org.hibernate.dialect.H2Dialect
+    open-in-view: false
+    hibernate:
+      ddl-auto: create-drop
+  flyway:
+    enabled: false
+  # Désactiver Kafka
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+
+server:
+  port: 0
+
+eureka:
+  client:
+    enabled: false
+
+booking:
+  hold-duration: PT15M
+  max-quantity-per-order: 10
