@@ -1,0 +1,13 @@
+spring:
+  cloud:
+    config:
+      enabled: false
+
+eureka:
+  client:
+    enabled: false
+
+management:
+  health:
+    diskspace:
+      enabled: false

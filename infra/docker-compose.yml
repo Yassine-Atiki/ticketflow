@@ -26,6 +26,17 @@ services:
       kafka:
         condition: service_healthy
 
+  notification-service:
+    build:
+      context: ..
+      dockerfile: services/notification-service/Dockerfile
+    ports:
+      - "127.0.0.1:8088:8088"
+    environment:
+      CONFIG_SERVER_URL: http://host.docker.internal:8888
+      SPRING_CLOUD_CONFIG_LABEL: ${SPRING_CLOUD_CONFIG_LABEL:-main}
+      SPRING_APPLICATION_JSON: '{"eureka":{"client":{"service-url":{"defaultZone":"http://host.docker.internal:8761/eureka/"}}}}'
+
   postgres:
     image: postgres:17
     container_name: ticketflow-postgres
