@@ -1,0 +1,9 @@
+
+spring:
+  application:
+    name: event-service
+  config:
+    import: "configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+  cloud:
+    config:
+      label: main
