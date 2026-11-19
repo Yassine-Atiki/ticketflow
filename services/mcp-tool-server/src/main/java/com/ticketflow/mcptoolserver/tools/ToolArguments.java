@@ -236,18 +236,18 @@ public final class ToolArguments {
     }
 
     private int lineQuantity(Object value) {
-        int quantity;
+        long quantity;
         if (value instanceof Integer integer) {
-            quantity = integer;
-        } else if (value instanceof Long number && number <= Integer.MAX_VALUE) {
-            quantity = number.intValue();
+            quantity = integer.longValue();
+        } else if (value instanceof Long number) {
+            quantity = number;
         } else {
             throw new ToolFailureException(ToolFailure.invalid("quantity must be an integer."));
         }
         if (quantity < 1 || quantity > 10) {
             throw new ToolFailureException(ToolFailure.invalid("quantity must be between 1 and 10."));
         }
-        return quantity;
+        return (int) quantity;
     }
 
     private int boundedInt(String name, int minimum, int maximum) {

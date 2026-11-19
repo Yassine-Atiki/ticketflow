@@ -126,6 +126,25 @@ class ToolArgumentsTest {
     }
 
     @Test
+    void bookingLineRejectsANegativeLongThatWouldWrapToAnAcceptedInt() {
+        long wrapsToOne = 1L - (1L << 32);
+        ToolArguments overflowing = new ToolArguments(Map.of(
+                "lines", List.of(Map.of(
+                        "ticketTierId", "f1e2d3c4-b5a6-4978-8695-a4b3c2d1e0f9",
+                        "quantity", wrapsToOne))));
+        ToolArguments accepted = new ToolArguments(Map.of(
+                "lines", List.of(Map.of(
+                        "ticketTierId", "f1e2d3c4-b5a6-4978-8695-a4b3c2d1e0f9",
+                        "quantity", 2L))));
+
+        assertThat(Long.valueOf(wrapsToOne).intValue()).isEqualTo(1);
+        assertThatThrownBy(overflowing::requiredBookingLines)
+                .isInstanceOf(ToolFailureException.class)
+                .hasMessageContaining("between 1 and 10");
+        assertThat(accepted.requiredBookingLines()).extracting(line -> line.get("quantity")).containsExactly(2);
+    }
+
+    @Test
     void bookingStatusFilterRejectsUnknownValues() {
         ToolArguments valid = new ToolArguments(Map.of("status", "CONFIRMED"));
         ToolArguments invalid = new ToolArguments(Map.of("status", "ISSUED"));

@@ -1,0 +1,160 @@
+# Test configuration. Spring tests point spring.config.location here so they do not
+# contact Config Server. Keep ticketflow.services aligned with mcp-tool-server.yml
+# in https://github.com/Yassine-Atiki/ticketflow-config (label main).
+
+spring:
+  application:
+    name: mcp-tool-server
+  cloud:
+    config:
+      enabled: false
+    discovery:
+      enabled: false
+
+eureka:
+  client:
+    enabled: false
+    register-with-eureka: false
+    fetch-registry: false
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    url: /openapi.yaml
+    disable-swagger-default-url: true
+  ai:
+    mcp:
+      enabled: false
+
+ticketflow:
+  mcp:
+    endpoint: /mcp
+    server-name: ticketflow-mcp
+    server-version: 0.0.1-SNAPSHOT
+    allowed-hosts:
+      - "localhost:*"
+      - "127.0.0.1:*"
+      - "mcp-tool-server:*"
+    allowed-origins:
+      - "http://localhost:*"
+      - "http://127.0.0.1:*"
+  security:
+    propagate-authorization: true
+  services:
+    event:
+      base-url: ${EVENT_SERVICE_URL:}
+      connect-timeout: 2s
+      response-timeout: 5s
+      idempotency-header: Idempotency-Key
+      operations:
+        search:
+          method: GET
+          path: /api/v1/events
+          contract-confirmed: false
+          query:
+            q: q
+            categoryId: categoryId
+            city: city
+            dateFrom: dateFrom
+            dateTo: dateTo
+            page: page
+            size: size
+            sort: sort
+        details:
+          method: GET
+          path: /api/v1/events/{id}
+          contract-confirmed: false
+    ticket:
+      base-url: ${TICKET_SERVICE_URL:}
+      connect-timeout: 2s
+      response-timeout: 5s
+      idempotency-header: Idempotency-Key
+      operations:
+        mine:
+          method: GET
+          path: /api/v1/me/tickets
+          contract-confirmed: false
+          query:
+            page: page
+            size: size
+            status: status
+        detail:
+          method: GET
+          path: /api/v1/me/tickets/{ticketId}
+          contract-confirmed: false
+    booking:
+      base-url: ${BOOKING_SERVICE_URL:}
+      connect-timeout: 2s
+      response-timeout: 5s
+      idempotency-header: Idempotency-Key
+      operations:
+        create:
+          method: POST
+          path: /api/v1/bookings
+          contract-confirmed: false
+          body:
+            eventId: eventId
+            lines: lines
+        status:
+          method: GET
+          path: /api/v1/bookings/{id}
+          contract-confirmed: false
+        cancel:
+          method: POST
+          path: /api/v1/bookings/{id}/cancel
+          contract-confirmed: false
+          body:
+            reason: reason
+        mine:
+          method: GET
+          path: /api/v1/me/bookings
+          contract-confirmed: false
+          query:
+            status: status
+            page: page
+            size: size
+    payment:
+      base-url: ${PAYMENT_SERVICE_URL:}
+      connect-timeout: 2s
+      response-timeout: 5s
+      idempotency-header: Idempotency-Key
+      operations:
+        initiate:
+          method: POST
+          path: /api/payments
+          contract-confirmed: false
+          body:
+            bookingId: bookingId
+            provider: provider
+        status:
+          method: GET
+          path: /api/payments/{id}
+          contract-confirmed: false
+        byBooking:
+          method: GET
+          path: /api/payments/booking/{bookingId}
+          contract-confirmed: false
+    customer:
+      base-url: ${CUSTOMER_SERVICE_URL:http://localhost:8081}
+      connect-timeout: 2s
+      response-timeout: 5s
+      idempotency-header: Idempotency-Key
+      operations:
+        profile:
+          method: GET
+          path: /api/customers/{customerId}
+          contract-confirmed: false
+        preferencesGet:
+          method: GET
+          path: /api/customers/{id}/preferences
+          contract-confirmed: false
+        preferencesPut:
+          method: PUT
+          path: /api/customers/{id}/preferences
+          contract-confirmed: false
+          body:
+            language: language
+            notificationChannel: notificationChannel
+            marketingOptIn: marketingOptIn

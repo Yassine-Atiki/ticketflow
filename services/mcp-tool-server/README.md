@@ -33,7 +33,7 @@ Adding a tool means a new `@Bean` of type `McpTool`, a method on the matching in
 
 ## Run
 
-From the repository root, with JDK 21:
+From the repository root, with JDK 21. Config Server must already be running on port 8888 and serving `mcp-tool-server.yml` from `Yassine-Atiki/ticketflow-config`, label `main`. The import is mandatory: without that file the process does not start. IntelliJ uses `http://localhost:8888`. No other application settings live in this module.
 
 ```bash
 ./mvnw -pl services/mcp-tool-server spring-boot:run
@@ -57,7 +57,7 @@ npx @modelcontextprotocol/inspector
 
 In the inspector, set the transport to Streamable HTTP and the URL to `http://localhost:8090/mcp`. If the inspector is opened from a browser origin other than `http://localhost` or `http://127.0.0.1`, add that origin to `ticketflow.mcp.allowed-origins`. Requests whose `Host` header is outside `ticketflow.mcp.allowed-hosts` are rejected with HTTP 421. That check is the SDK's DNS-rebinding protection.
 
-Docker, from the repository root:
+Docker, from the repository root. Compose sets `CONFIG_SERVER_URL` to `http://host.docker.internal:8888` so the container reaches Config Server on the host. Start Config Server before the container.
 
 ```bash
 docker compose -f infra/docker-compose.yml up --build mcp-tool-server
@@ -71,7 +71,9 @@ Tests, including WireMock scenarios that do not need the other services:
 
 ## Configuration
 
-Service URLs and endpoint paths come from configuration. Empty URLs are allowed: a tool whose service has no URL returns `SERVICE_NOT_CONFIGURED` and does not open a connection.
+`src/main/resources/application.yaml` only names the service and points at Config Server. Port, Eureka, Swagger, service addresses and tool settings are in `mcp-tool-server.yml` on the `main` label of [ticketflow-config](https://github.com/Yassine-Atiki/ticketflow-config). Tests do not call Config Server: they start from `src/test/resources/application-test.yaml`.
+
+Service URLs and endpoint paths come from that remote file. Empty URLs are allowed: a tool whose service has no URL returns `SERVICE_NOT_CONFIGURED` and does not open a connection.
 
 | Variable | Purpose | Default |
 |---|---|---|
@@ -85,9 +87,9 @@ Service URLs and endpoint paths come from configuration. Empty URLs are allowed:
 
 Customer Service is the only downstream API this module calls. Its README documents port 8081. Its `application.properties` does not set `server.port`, so a process started without Config Server listens on 8080. Point `CUSTOMER_SERVICE_URL` at the port that is actually open.
 
-Event, ticket, booking and payment paths in `application.yaml` match the contracts published on the team branches. Those services do not implement the operations yet, so `contract-confirmed` stays `false`. There is no notification service, and this module does not expose notification tools.
+Event, ticket, booking and payment paths in `mcp-tool-server.yml` match the contracts published on the team branches. Those services do not implement the operations yet, so `contract-confirmed` stays `false`. `get_customer_profile` is also `false`: the path exists, but the tool must stay off until a verified identity can authorize the requested customer. Write operations stay off until confirmation is bound to that action and its exact parameters. There is no notification service, and this module does not expose notification tools.
 
-Timeouts, HTTP methods, paths, query names, body field names and the idempotency header are in `src/main/resources/application.yaml` under `ticketflow.services.<service>`. Each operation has `contract-confirmed`. While that flag is `false`, the tool is still discoverable, and invoking it returns `CONTRACT_NOT_CONFIRMED` without an HTTP call. Set the flag to `true` only after the owning team publishes the OpenAPI contract and the path, method and field names in this file match that contract.
+Timeouts, HTTP methods, paths, query names, body field names and the idempotency header are in `mcp-tool-server.yml` under `ticketflow.services.<service>`. Each operation has `contract-confirmed`. While that flag is `false`, the tool is still discoverable, and invoking it returns `CONTRACT_NOT_CONFIRMED` without an HTTP call. Set the flag to `true` only after the owning team publishes the OpenAPI contract and the path, method and field names in that file match that contract. For the profile tool, also wait until the caller identity is checked against `customerId`.
 
 | Setting | Meaning |
 |---|---|
@@ -125,21 +127,21 @@ Booking `eventId`, `ticketTierId` and `bookingId`, and payment `bookingId` and `
 | `initiate_payment` | `bookingId`, `userConfirmed`, `idempotencyKey` | `provider` | Disabled. Contract: `POST /api/payments` |
 | `get_payment_status` | `paymentId` | | Disabled. Contract: `GET /api/payments/{id}` |
 | `get_payments_by_booking` | `bookingId` | | Disabled. Contract: `GET /api/payments/booking/{bookingId}` |
-| `get_customer_profile` | `customerId` | | Enabled: `GET /api/customers/{customerId}` |
+| `get_customer_profile` | `customerId` | | Disabled until caller identity is checked. Contract: `GET /api/customers/{customerId}` |
 | `get_customer_preferences` | `customerId` | | Disabled until Customer #7. Contract: `GET /api/customers/{id}/preferences` |
 | `update_customer_preferences` | `customerId`, `language`, `notificationChannel`, `userConfirmed` | `marketingOptIn` | Disabled until Customer #7. Contract: `PUT /api/customers/{id}/preferences` |
 
 Every input schema sets `additionalProperties` to `false`.
 
-### Confirmed Customer Service call
+### Customer profile stays disabled
 
-`get_customer_profile` calls the endpoint implemented in `customer-service`:
+`get_customer_profile` maps the endpoint implemented in `customer-service`:
 
 ```http
 GET /api/customers/{id}
 ```
 
-The JSON body uses `id`, `firstName`, `lastName`, `email`, `phone` and `createdAt`. Errors from that service are RFC 9457 problem details. This tool returns those same profile fields. It does not add credentials or payment data.
+The tool does not call it. `customerId` is supplied by the caller, and nothing yet checks that this caller may read that profile. The flag stays `false` until a verified identity can authorize the requested id. When that exists, the JSON body uses `id`, `firstName`, `lastName`, `email`, `phone` and `createdAt`.
 
 ### Example: profile
 
@@ -149,21 +151,15 @@ Arguments:
 { "customerId": "42" }
 ```
 
-Success result (`isError` false). `data` is the Customer Service body:
+Result (`isError` true). Customer Service is not called:
 
 ```json
 {
-  "status": "OK",
+  "status": "ERROR",
+  "code": "CONTRACT_NOT_CONFIRMED",
   "service": "Customer Service",
-  "operation": "get_customer_profile",
-  "data": {
-    "id": 42,
-    "firstName": "Sara",
-    "lastName": "Idrissi",
-    "email": "sara@example.com",
-    "phone": "+212600000000",
-    "createdAt": "2026-01-01T00:00:00Z"
-  }
+  "operation": "profile",
+  "message": "Customer Service operation profile is disabled. The call was not sent. Enable contract-confirmed only after that service implements the configured path."
 }
 ```
 
@@ -241,6 +237,7 @@ The assistant should:
 
 | When | MCP action |
 |---|---|
+| Verified caller identity | Re-enable `get_customer_profile` only after the token subject is checked against `customerId` |
 | Customer #7 merges | Set preferences ops `contract-confirmed: true`; run against real Customer Service |
 | Event controllers land | Enable `search_events` / `get_event_details`; tighten `eventId` to integer if Event keeps int64 |
 | Booking controllers land | Enable create/status/cancel/`list_my_bookings` |
@@ -260,11 +257,12 @@ These items are intentionally not invented:
 | Topic | State |
 |---|---|
 | Event, ticket, booking and payment controllers | Contracts are mapped and `contract-confirmed` is false until the controllers exist |
+| Customer profile | Mapped and disabled. `contract-confirmed` stays false until caller identity can authorize the requested profile |
 | Customer preferences | Mapped with `contract-confirmed: false` until Customer PR #7 lands |
 | Notification tools | Removed. No notification service or contract exists |
 | JWT signature, issuer and audience | Not validated. Booking and ticket calls require a Bearer header and forward it |
 | Payment capture | Not interpreted. No card data is accepted |
-| Eureka registration | Client is on the classpath and disabled. Config Server import is optional so this process still starts without port 8888 |
+| Eureka registration | Client is on the classpath. Registration stays disabled in `mcp-tool-server.yml`. Config Server import is mandatory |
 
 When a contract arrives, update that operation's `method`, `path`, `query` and `body` map, set the base URL, then set `contract-confirmed: true`. Flat JSON fields can be renamed from configuration. A nested body or a header other than `Authorization` and the idempotency header needs a small change in the matching client.
 
@@ -278,4 +276,4 @@ When a contract arrives, update that operation's `method`, `path`, `query` and `
 
 `PublishedContractAlignmentTest` checks the configured paths and bodies against the published team contracts and checks that unimplemented operations stay disabled.
 
-`McpDownstreamIntegrationTest` drives the same endpoint against WireMock for a customer profile read, a refused payment, an authentication failure, a payment timeout, and a booking that is not sent when confirmation is missing.
+`McpDownstreamIntegrationTest` drives the same endpoint against WireMock. `get_customer_profile` returns `CONTRACT_NOT_CONFIRMED` and sends no request to Customer Service. The same class covers a refused payment, a payment timeout, and a booking that is not sent when confirmation is missing.

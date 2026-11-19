@@ -30,8 +30,9 @@ public class McpServerConfiguration {
             A payment tool result never means the payment was captured.
             Ticket controlCode values are redacted before they reach the assistant.
             Tools whose downstream implementation is not enabled return CONTRACT_NOT_CONFIRMED and do not send an HTTP call.
-            Customer profile reads use the implemented Customer Service path GET /api/customers/{id}.
+            get_customer_profile stays disabled until a verified caller identity can authorize the requested customerId.
             Preference tools stay disabled until Customer PR #7 is confirmed on develop.
+            create_booking, cancel_booking, initiate_payment and update_customer_preferences stay disabled until confirmation is bound to the exact action.
             """;
 
     @Bean

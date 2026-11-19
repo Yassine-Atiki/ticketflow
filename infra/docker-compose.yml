@@ -14,8 +14,13 @@ services:
     container_name: mcp-tool-server
     ports:
       - "127.0.0.1:8090:8090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       SERVER_PORT: "8090"
+      # Config Server runs on the host (IntelliJ, port 8888). localhost inside the
+      # container is the container itself, so the import uses the host gateway.
+      CONFIG_SERVER_URL: http://host.docker.internal:8888
       # Ports are the ones published by each service contract. Inside Compose, two
       # services may both listen on 8082 because each container has its own port space.
       # event-service, booking-service, payment-service and ticket-service are not

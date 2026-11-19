@@ -17,6 +17,8 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class CustomerToolConfiguration {
 
+    private static final String PROFILE_DISABLED =
+            " The call stays disabled until a verified caller identity can authorize the requested customerId.";
     private static final String CONFIRMATION =
             "Set userConfirmed to true only after the user explicitly agrees to change these preferences.";
     private static final String PREFERENCES_DISABLED =
@@ -30,7 +32,8 @@ public class CustomerToolConfiguration {
                 "Retrieve a customer profile from Customer Service GET /api/customers/{id}. "
                         + "That path is the published Customer Service contract. "
                         + "Authenticated subject extraction is not available yet, so customerId is required. "
-                        + "The response contains the fields Customer Service already returns: id, firstName, lastName, email, phone and createdAt.",
+                        + "The response would contain id, firstName, lastName, email, phone and createdAt."
+                        + PROFILE_DISABLED,
                 objectSchema(properties(
                         "customerId", stringProperty(
                                 "Numeric customer id published by Customer Service.",

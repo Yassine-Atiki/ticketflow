@@ -12,7 +12,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 
-@SpringBootTest(webEnvironment = WebEnvironment.NONE)
+@SpringBootTest(
+        webEnvironment = WebEnvironment.NONE,
+        properties = "spring.config.location=classpath:/application-test.yaml")
 class PublishedContractAlignmentTest {
 
     @Autowired
@@ -91,14 +93,14 @@ class PublishedContractAlignmentTest {
     }
 
     @Test
-    void customerProfileRemainsTheOnlyEnabledCall() {
+    void customerCallsStayDisabledUntilAccessCanBeChecked() {
         Operation profile = services.getCustomer().getOperations().get("profile");
         Operation preferencesGet = services.getCustomer().getOperations().get("preferencesGet");
         Operation preferencesPut = services.getCustomer().getOperations().get("preferencesPut");
 
         assertThat(profile.getMethod()).isEqualTo("GET");
         assertThat(profile.getPath()).isEqualTo("/api/customers/{customerId}");
-        assertThat(profile.isContractConfirmed()).isTrue();
+        assertThat(profile.isContractConfirmed()).isFalse();
         assertThat(preferencesGet.getMethod()).isEqualTo("GET");
         assertThat(preferencesGet.getPath()).isEqualTo("/api/customers/{id}/preferences");
         assertThat(preferencesGet.isContractConfirmed()).isFalse();

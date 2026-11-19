@@ -18,7 +18,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.server.LocalServerPort;
 
-@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+        webEnvironment = WebEnvironment.RANDOM_PORT,
+        properties = "spring.config.location=classpath:/application-test.yaml")
 @Timeout(30)
 class McpServerStartupTest {
 
@@ -76,6 +78,9 @@ class McpServerStartupTest {
     @Test
     void newlyMappedToolsStayDisabledUntilContractsAreConfirmed() {
         try (McpSyncClient client = McpTestClient.connect(port, "Bearer test-token")) {
+            assertThat(McpTestClient.body(client.callTool(McpTestClient.call(
+                    "get_customer_profile", Map.of("customerId", "42")))))
+                    .containsEntry("code", "CONTRACT_NOT_CONFIRMED");
             assertThat(McpTestClient.body(client.callTool(McpTestClient.call(
                     "get_customer_preferences", Map.of("customerId", "42")))))
                     .containsEntry("code", "CONTRACT_NOT_CONFIRMED");
@@ -143,6 +148,26 @@ class McpServerStartupTest {
                 HttpResponse.BodyHandlers.ofString());
         assertThat(contract.statusCode()).isEqualTo(200);
         assertThat(contract.body()).contains("/api/tools").contains("/mcp");
+
+        HttpClient http = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build();
+        HttpResponse<String> swaggerConfig = http.send(
+                HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/v3/api-docs/swagger-config")).GET().build(),
+                HttpResponse.BodyHandlers.ofString());
+        URI swaggerEntry = URI.create("http://127.0.0.1:" + port + "/swagger-ui.html");
+        HttpResponse<String> swaggerUi = http.send(
+                HttpRequest.newBuilder(swaggerEntry).GET().build(),
+                HttpResponse.BodyHandlers.ofString());
+
+        assertThat(swaggerConfig.statusCode()).isEqualTo(200);
+        assertThat(swaggerConfig.body()).contains("\"url\":\"/openapi.yaml\"");
+        assertThat(swaggerUi.statusCode()).isEqualTo(302);
+        URI swaggerPage = swaggerEntry.resolve(swaggerUi.headers().firstValue("Location").orElseThrow());
+        HttpResponse<String> swaggerHtml = http.send(
+                HttpRequest.newBuilder(swaggerPage).GET().build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(swaggerHtml.statusCode()).isEqualTo(200);
+        assertThat(swaggerHtml.body()).contains("swagger-ui");
+        assertThat(swaggerHtml.uri().getPath()).contains("swagger-ui");
     }
 
     @Test

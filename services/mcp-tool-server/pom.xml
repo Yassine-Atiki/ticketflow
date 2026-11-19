@@ -17,7 +17,7 @@
 
     <properties>
         <mcp-sdk.version>2.1.0</mcp-sdk.version>
-        <springdoc.version>3.1.1</springdoc.version>
+        <springdoc.version>3.0.3</springdoc.version>
         <wiremock.version>3.13.1</wiremock.version>
     </properties>
 

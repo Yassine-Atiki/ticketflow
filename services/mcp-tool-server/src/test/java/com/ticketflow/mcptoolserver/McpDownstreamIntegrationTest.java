@@ -24,14 +24,15 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
 
-@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+        webEnvironment = WebEnvironment.RANDOM_PORT,
+        properties = "spring.config.location=classpath:/application-test.yaml")
 @TestPropertySource(properties = {
         "ticketflow.services.event.operations.search.contract-confirmed=true",
         "ticketflow.services.booking.operations.create.contract-confirmed=true",
         "ticketflow.services.payment.operations.initiate.contract-confirmed=true",
         "ticketflow.services.payment.operations.status.contract-confirmed=true",
-        "ticketflow.services.payment.response-timeout=500ms",
-        "ticketflow.services.customer.operations.profile.contract-confirmed=true"
+        "ticketflow.services.payment.response-timeout=500ms"
 })
 @Timeout(40)
 class McpDownstreamIntegrationTest {
@@ -66,9 +67,8 @@ class McpDownstreamIntegrationTest {
     }
 
     @Test
-    void getCustomerProfileReturnsThePublishedCustomerContractAndForwardsAuthorization() {
+    void getCustomerProfileDoesNotCallCustomerService() {
         WIREMOCK.stubFor(get(urlEqualTo("/api/customers/42"))
-                .withHeader("Authorization", equalTo("Bearer test-token"))
                 .willReturn(aResponse()
                         .withHeader("Content-Type", "application/json")
                         .withBody("""
@@ -78,12 +78,12 @@ class McpDownstreamIntegrationTest {
         try (McpSyncClient client = McpTestClient.connect(port, "Bearer test-token")) {
             var result = client.callTool(McpTestClient.call("get_customer_profile", Map.of("customerId", "42")));
 
-            assertThat(result.isError()).isFalse();
-            assertThat(McpTestClient.body(result)).containsEntry("status", "OK");
-            @SuppressWarnings("unchecked")
-            Map<String, Object> data = (Map<String, Object>) McpTestClient.body(result).get("data");
-            assertThat(data).containsEntry("firstName", "Sara").containsEntry("email", "sara@example.com");
+            assertThat(result.isError()).isTrue();
+            Map<String, Object> body = McpTestClient.body(result);
+            assertThat(body).containsEntry("code", "CONTRACT_NOT_CONFIRMED").containsEntry("status", "ERROR");
+            assertThat(body.get("message").toString()).doesNotContain("sara@example.com");
         }
+        WIREMOCK.verify(0, getRequestedFor(urlEqualTo("/api/customers/42")));
     }
 
     @Test
@@ -128,23 +128,6 @@ class McpDownstreamIntegrationTest {
     }
 
     @Test
-    void customerAuthenticationFailureIsReportedAsSuch() {
-        WIREMOCK.stubFor(get(urlEqualTo("/api/customers/42"))
-                .willReturn(aResponse().withStatus(401).withBody("secret-token")));
-
-        try (McpSyncClient client = McpTestClient.connect(port, "Bearer expired")) {
-            var result = client.callTool(McpTestClient.call("get_customer_profile", Map.of("customerId", "42")));
-
-            assertThat(result.isError()).isTrue();
-            Map<String, Object> body = McpTestClient.body(result);
-            assertThat(body).containsEntry("code", "AUTHENTICATION_FAILED");
-            assertThat(body.get("message").toString()).doesNotContain("secret-token");
-        }
-        WIREMOCK.verify(getRequestedFor(urlEqualTo("/api/customers/42"))
-                .withHeader("Authorization", equalTo("Bearer expired")));
-    }
-
-    @Test
     void paymentStatusTimeoutIsAnError() {
         WIREMOCK.stubFor(get(urlEqualTo("/api/payments/7d09ea60-5ba3-4a39-a13b-d5b15055f39c"))
                 .willReturn(aResponse()
@@ -165,6 +148,9 @@ class McpDownstreamIntegrationTest {
     void disabledMappedToolsDoNotHitDownstream() {
         try (McpSyncClient client = McpTestClient.connect(port, "Bearer test-token")) {
             assertThat(McpTestClient.body(client.callTool(McpTestClient.call(
+                    "get_customer_profile", Map.of("customerId", "42")))))
+                    .containsEntry("code", "CONTRACT_NOT_CONFIRMED");
+            assertThat(McpTestClient.body(client.callTool(McpTestClient.call(
                     "get_customer_preferences", Map.of("customerId", "42")))))
                     .containsEntry("code", "CONTRACT_NOT_CONFIRMED");
             assertThat(McpTestClient.body(client.callTool(McpTestClient.call(
@@ -175,6 +161,7 @@ class McpDownstreamIntegrationTest {
                     Map.of("bookingId", "b3e1f9a0-1c2d-4e5f-8a9b-0c1d2e3f4a5b")))))
                     .containsEntry("code", "CONTRACT_NOT_CONFIRMED");
         }
+        WIREMOCK.verify(0, getRequestedFor(urlEqualTo("/api/customers/42")));
         WIREMOCK.verify(0, getRequestedFor(urlEqualTo("/api/customers/42/preferences")));
         WIREMOCK.verify(0, getRequestedFor(urlEqualTo("/api/v1/me/bookings")));
         WIREMOCK.verify(0, getRequestedFor(urlEqualTo(

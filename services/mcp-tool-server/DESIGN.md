@@ -4,7 +4,7 @@
 
 Ce module est l'adaptateur MCP de TicketFlow. Il valide les arguments, applique une confirmation pour les opérations sensibles, puis délègue aux API des autres services. Il ne possède pas de données métier et n'applique pas les règles de stock, de prix ou de paiement.
 
-Seul `GET /api/customers/{id}` est implémenté aujourd'hui par Customer Service et activé ici (`contract-confirmed: true`). Les contrats Event, Ticket, Booking et Payment sont publiés sur les branches de l'équipe, mais leurs contrôleurs ne sont pas encore là. Leurs outils restent donc désactivés. Les préférences client (`GET/PUT /api/customers/{id}/preferences`) sont mappées depuis la branche customer, avec `contract-confirmed: false` jusqu'à la fusion de Customer PR #7.
+`GET /api/customers/{id}` est implémenté par Customer Service, mais `get_customer_profile` reste désactivé (`contract-confirmed: false`). L'outil prend le `customerId` de l'appel sans pouvoir vérifier que l'appelant a le droit de lire ce profil. Il sera réactivé quand une identité vérifiée pourra contrôler cet accès. Les contrats Event, Ticket, Booking et Payment sont publiés sur les branches de l'équipe, mais leurs contrôleurs ne sont pas encore là. Leurs outils restent donc désactivés, y compris les écritures, tant que la confirmation humaine n'est pas liée à l'action et à ses paramètres exacts. Les préférences client (`GET/PUT /api/customers/{id}/preferences`) sont mappées depuis la branche customer, avec `contract-confirmed: false` jusqu'à la fusion de Customer PR #7.
 
 Il n'existe pas de Notification Service. Les outils de notification ont été retirés.
 
@@ -13,7 +13,7 @@ Il n'existe pas de Notification Service. Les outils de notification ont été re
 | Élément | Responsabilité de ce service | Limite |
 |---|---|---|
 | Outils MCP | Schéma, validation, confirmation, en-têtes | Pas de décision métier |
-| Customer | `GET /api/customers/{id}` | Le profil n'authentifie pas l'appelant |
+| Customer | `GET /api/customers/{id}` | Désactivé. Le profil n'authentifie pas l'appelant, donc l'outil ne part pas |
 | Customer preferences | `GET/PUT /api/customers/{id}/preferences` | Désactivé jusqu'à confirmation du contrat. `language` ∈ fr\|en\|ar, `notificationChannel` ∈ EMAIL\|TELEGRAM. La mise à jour exige `userConfirmed` |
 | Booking | `POST /api/v1/bookings`, `GET /api/v1/me/bookings`, `GET /api/v1/bookings/{id}`, `POST /api/v1/bookings/{id}/cancel` | Le propriétaire est le sujet du jeton Bearer. `eventId`, `ticketTierId` et `bookingId` sont des UUID. `Idempotency-Key` de création : 100 caractères |
 | Ticket | `GET /api/v1/me/tickets`, `GET /api/v1/me/tickets/{ticketId}` | Même règle d'identité. `controlCode` est rédigé avant le retour à l'assistant. Pas d'endpoint de disponibilité publié |
@@ -34,6 +34,7 @@ Booking et Ticket exigent un en-tête `Authorization: Bearer ...` avant l'appel.
 
 | When | MCP action |
 |---|---|
+| Verified caller identity | Re-enable `get_customer_profile` only after the token subject is checked against `customerId` |
 | Customer #7 merges | Set preferences ops `contract-confirmed: true`; run against real Customer Service |
 | Event controllers land | Enable `search_events` / `get_event_details`; tighten `eventId` to integer if Event keeps int64 |
 | Booking controllers land | Enable create/status/cancel/`list_my_bookings`; drop optional cancel `Idempotency-Key` if still unspecified |
