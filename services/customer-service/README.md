@@ -9,7 +9,7 @@ this service only manages the business profile.
 
 ## Overview
 - **Port:** 8081
-- **Database:** H2 in-memory (recreated on every start)
+- **Database:** PostgreSQL `customer_db` (configuration dans `ticketflow-config`) ; H2 en mémoire uniquement pour les tests
 - **Depends on:** nothing
 
 | Method | Path | Description |
@@ -54,3 +54,44 @@ Errors follow RFC 9457 (`ProblemDetail`): 400 validation, 404 not found, 409 dup
 - `open-in-view` is disabled on purpose to avoid lazy-loading surprises.
 - An in-memory database is fine for learning but never shared between
   services: each service owns its data.
+
+
+
+## Rôle dans TicketFlow
+Gère les comptes clients, les profils et les préférences de notification.
+Source de vérité des clients pour Booking, Notification et AI Assistant.
+L'authentification est déléguée à Keycloak (intégration prévue).
+
+## Fonctionnalités
+- CRUD client (`/api/customers`), email unique
+- Préférences : langue (fr/en/ar), canal (EMAIL/TELEGRAM), opt-in marketing (`/api/customers/{id}/preferences`)
+- Prévu : liaison du compte Telegram (FR-017)
+
+## Technologies
+Java 21, Spring Boot 4, Spring Data JPA, Spring Cloud Config, Eureka, springdoc-openapi, PostgreSQL 17 (`customer_db`) ou H2.
+
+## Dépendances avec les autres services
+| Service | Relation |
+|---|---|
+| Config Server | fournit la configuration (`customer-service.yml`, dépôt `ticketflow-config`) |
+| Discovery Server | enregistrement Eureka |
+| Booking Service | appellera `GET /api/customers/{id}` pour vérifier le client |
+| Notification Service | appellera `GET /api/customers/{id}/preferences` |
+| AI Assistant | liaison Telegram (prévue) |
+
+## Base de données et configuration
+- `application.properties` ne contient que le nom du service et la connexion au Config Server. Le service exige le Config Server au démarrage.
+- PostgreSQL : la datasource `customer_db` (utilisateur `customer_user`, `ddl-auto: update`) est dans `customer-service.yml` du dépôt `ticketflow-config` (branche `main`), avec les paramètres JPA, Eureka et Swagger.
+- H2 et `ddl-auto=create-drop` sont réservés aux tests (`src/test/resources/application.properties`).
+- Intégrité : `customer_preferences.customer_id` est une clé étrangère `ON DELETE CASCADE` vers `customers`.
+- Concurrence : `PUT /preferences` verrouille la ligne `customers` (`SELECT ... FOR UPDATE`).
+- Identifiants de développement uniquement (script `infra/postgres/init`).
+
+## Lancement
+1. `docker compose -f infra/docker-compose.yml up -d postgres`
+2. Démarrer `config-server` (8888), puis `discovery-server` (8761)
+3. `./mvnw -pl services/customer-service spring-boot:run`
+4. Swagger UI : http://localhost:8081/swagger-ui/index.html
+5. Contrat : `src/main/resources/static/openapi.yaml`
+
+Les tests (`./mvnw -pl services/customer-service verify`) utilisent H2 et ne nécessitent ni Config Server ni Eureka.
