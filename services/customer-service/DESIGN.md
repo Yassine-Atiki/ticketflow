@@ -26,8 +26,8 @@ Le lien préférences -> client est une relation JPA `@OneToOne` côté `Custome
 - Kafka : aucun usage à ce stade.
 
 ## 5. Choix techniques
-- Par défaut (`application.properties`) : H2 en mémoire, `ddl-auto=create-drop`. Les tests utilisent H2 avec un `application.properties` de test isolé du Config Server.
-- PostgreSQL (`customer_db`, `ddl-auto: update`, convention de l'équipe) : fourni par `customer-service.yml` du dépôt `ticketflow-config`, une fois la PR de configuration fusionnée sur `main`. Identifiants de développement uniquement.
+- `application.properties` : nom du service et connexion au Config Server uniquement. H2 et `create-drop` sont réservés aux tests, avec un `application.properties` de test isolé du Config Server.
+- PostgreSQL (`customer_db`, `ddl-auto: update`, convention de l'équipe) : fourni par `customer-service.yml` du dépôt `ticketflow-config` (branche `main`), avec JPA, Eureka et Swagger. Identifiants de développement uniquement.
 - Tests d'intégration sur H2 (contrainte unique, FK, verrou) ; pas de Testcontainers à ce stade.
 
 ## 6. Points à discuter

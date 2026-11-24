@@ -9,7 +9,7 @@ this service only manages the business profile.
 
 ## Overview
 - **Port:** 8081
-- **Database:** PostgreSQL `customer_db` si `customer-service.yml` de `ticketflow-config` contient la datasource ; sinon H2 en mémoire (fallback, tests)
+- **Database:** PostgreSQL `customer_db` (configuration dans `ticketflow-config`) ; H2 en mémoire uniquement pour les tests
 - **Depends on:** nothing
 
 | Method | Path | Description |
@@ -80,9 +80,9 @@ Java 21, Spring Boot 4, Spring Data JPA, Spring Cloud Config, Eureka, springdoc-
 | AI Assistant | liaison Telegram (prévue) |
 
 ## Base de données et configuration
-- Par défaut (`application.properties`) : H2 en mémoire, `ddl-auto=create-drop`. Les tests utilisent H2.
-- PostgreSQL : la datasource `customer_db` (utilisateur `customer_user`, `ddl-auto: update`) est dans `customer-service.yml` du dépôt `ticketflow-config`, branche `feature/customer-service` (PR à fusionner sur `main`). La configuration du Config Server prime sur `application.properties`.
-- Tant que cette configuration n'est pas sur `main`, `label=main` donne H2. Pour tester PostgreSQL : `--spring.cloud.config.label=feature/customer-service`.
+- `application.properties` ne contient que le nom du service et la connexion au Config Server. Le service exige le Config Server au démarrage.
+- PostgreSQL : la datasource `customer_db` (utilisateur `customer_user`, `ddl-auto: update`) est dans `customer-service.yml` du dépôt `ticketflow-config` (branche `main`), avec les paramètres JPA, Eureka et Swagger.
+- H2 et `ddl-auto=create-drop` sont réservés aux tests (`src/test/resources/application.properties`).
 - Intégrité : `customer_preferences.customer_id` est une clé étrangère `ON DELETE CASCADE` vers `customers`.
 - Concurrence : `PUT /preferences` verrouille la ligne `customers` (`SELECT ... FOR UPDATE`).
 - Identifiants de développement uniquement (script `infra/postgres/init`).
